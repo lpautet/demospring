@@ -1,6 +1,7 @@
 package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
+import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.JWTUtil;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.*;
@@ -23,7 +24,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class AuthController {
 
-    static final String REDIRECT_URI = "http://localhost:8080/atmocb";
+    static final String REDIRECT_ENDPOINT = "/atmocb";
     static final String NETATMO_SCOPE = "read_station";
     static final MessageFormat NETATMO_OAUTH_URL_FORMAT = new MessageFormat("https://api.netatmo.com/oauth2/authorize?" +
             "client_id={0}" +
@@ -34,6 +35,7 @@ public class AuthController {
     private NetatmoConfig netatmoConfig;
     private JWTUtil jwtUtil;
     private UserService userService;
+    private AppConfig appConfig;
 
     private final WebClient tokenWebClient = WebClient.builder().baseUrl("https://api.netatmo.com").defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE).build();
 
@@ -41,7 +43,7 @@ public class AuthController {
     public Mono<ResponseEntity<String>> loginNetatmo(@RequestParam String id) {
         Object[] args = {
                 netatmoConfig.getClientId(),
-                REDIRECT_URI, NETATMO_SCOPE, id
+                appConfig.getRedirectUri() + REDIRECT_ENDPOINT, NETATMO_SCOPE, id
         };
         return Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create(NETATMO_OAUTH_URL_FORMAT.format(args))).build());
     }
@@ -53,7 +55,7 @@ public class AuthController {
                                 .with("client_id", netatmoConfig.getClientId())
                                 .with("client_secret", netatmoConfig.getClientSecret())
                                 .with("code", code)
-                                .with("redirect_uri", REDIRECT_URI)
+                                .with("redirect_uri", appConfig.getRedirectUri() + REDIRECT_ENDPOINT)
                                 .with("scope", NETATMO_SCOPE))
                 .retrieve()
                 .bodyToMono(TokenResponse.class)

@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -48,6 +49,16 @@ public class ApiController {
     public Mono<String> getHomesData(Principal principal) {
         User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
         return apiWebClient.get().uri("/homesdata").
-                header("Authorization", "Bearer " + user.getAccessToken()).retrieve().bodyToMono(String.class);
+                header("Authorization", "Bearer " + user.getAccessToken())
+                .retrieve().bodyToMono(String.class);
+    }
+
+    @GetMapping("/homestatus")
+    public Mono<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+        User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
+        return apiWebClient.get().uri(uriBuilder -> uriBuilder.path("/homestatus")
+                        .queryParam("home_id", homeId).build())
+                .header("Authorization", "Bearer " + user.getAccessToken())
+                .retrieve().bodyToMono(String.class);
     }
 }
