@@ -1,0 +1,1 @@
+create table if not exists users (id SERIAL primary key,username varchar(255),password varchar(255),access_token varchar(255),refresh_token varchar(255))
