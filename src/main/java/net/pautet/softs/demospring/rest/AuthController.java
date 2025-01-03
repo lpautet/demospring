@@ -14,10 +14,10 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
-import java.text.MessageFormat;
 import java.util.Map;
 
 @RestController
@@ -25,27 +25,25 @@ import java.util.Map;
 public class AuthController {
 
     static final String REDIRECT_ENDPOINT = "/atmocb";
-    static final String NETATMO_SCOPE = "read_station";
-    static final MessageFormat NETATMO_OAUTH_URL_FORMAT = new MessageFormat("https://api.netatmo.com/oauth2/authorize?" +
-            "client_id={0}" +
-            "&redirect_uri={1}" +
-            "&scope={2}" +
-            "&state={3}");
+    static final String NETATMO_SCOPE = "read_station read_thermostat";
+    static final String NETATMO_API_URI = "https://api.netatmo.com";
 
     private NetatmoConfig netatmoConfig;
     private JWTUtil jwtUtil;
     private UserService userService;
     private AppConfig appConfig;
 
-    private final WebClient tokenWebClient = WebClient.builder().baseUrl("https://api.netatmo.com").defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE).build();
+    private final WebClient tokenWebClient = WebClient.builder().baseUrl(NETATMO_API_URI).defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE).build();
 
     @GetMapping("/loginAtmo")
     public Mono<ResponseEntity<String>> loginNetatmo(@RequestParam String id) {
-        Object[] args = {
-                netatmoConfig.getClientId(),
-                appConfig.getRedirectUri() + REDIRECT_ENDPOINT, NETATMO_SCOPE, id
-        };
-        return Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create(NETATMO_OAUTH_URL_FORMAT.format(args))).build());
+        URI uri = UriComponentsBuilder.fromUriString(NETATMO_API_URI + "/oauth2/authorize")
+                .queryParam("client_id", netatmoConfig.getClientId())
+                .queryParam("redirect_uri", appConfig.getRedirectUri() + REDIRECT_ENDPOINT)
+                .queryParam("scope", NETATMO_SCOPE)
+                .queryParam("state", id)
+                .build().toUri();
+        return Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(uri).build());
     }
 
     @GetMapping("/atmocb")
@@ -60,23 +58,24 @@ public class AuthController {
                 .retrieve()
                 .bodyToMono(TokenResponse.class)
                 .flatMap(tokenResponse ->
-                    userService.findByUsername(state)
-                            .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid username in callback")))
-                            .flatMap(user -> {
-                                user.setAccessToken(tokenResponse.getAccessToken());
-                                user.setRefreshToken(tokenResponse.getRefreshToken());
-                                return userService.save(user);
-                            }).then(Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT)
-                                    .location(URI.create("/")).build()))
+                        userService.findByUsername(state)
+                                .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid username in callback")))
+                                .flatMap(user -> {
+                                    user.setAccessToken(tokenResponse.getAccessToken());
+                                    user.setRefreshToken(tokenResponse.getRefreshToken());
+                                    return userService.save(user);
+                                })
+                                .then(Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT)
+                                        .location(URI.create("/")).build()))
                 );
     }
 
     @PostMapping("/login")
     public Mono<ResponseEntity<AuthResponse>> login(@RequestBody AuthRequest authRequest) {
         return userService.findByUsername(authRequest.getUsername())
-                .map(userDetails ->
-                        ResponseEntity.ok(new AuthResponse(jwtUtil.generateToken(authRequest.getUsername())))
-                ).switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
+                .map(user ->
+                        ResponseEntity.ok(new AuthResponse(jwtUtil.generateToken(user.getUsername()))))
+                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
     }
 
     @PostMapping("/signup")
@@ -84,13 +83,7 @@ public class AuthController {
         // Encrypt password before saving
         //user.setPassword(user.getPassword());
         user.setId(null);
-        return userService.save(user)
-                .map(savedUser -> ResponseEntity.ok(user));
-    }
-
-    @GetMapping("/protected")
-    public Mono<ResponseEntity<String>> protectedEndpoint() {
-        return Mono.just(ResponseEntity.ok("You have accessed a protected endpoint!"));
+        return userService.save(user).map(ResponseEntity::ok);
     }
 
     @GetMapping("/env")
