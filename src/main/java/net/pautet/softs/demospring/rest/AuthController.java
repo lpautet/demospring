@@ -46,6 +46,8 @@ public class AuthController {
         return Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(uri).build());
     }
 
+
+
     @GetMapping("/atmocb")
     public Mono<ResponseEntity<String>> atmocb(@RequestParam String state, @RequestParam String code) {
         return tokenWebClient.post().uri("/oauth2/token").body(
