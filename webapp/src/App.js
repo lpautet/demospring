@@ -6,15 +6,15 @@ function App() {
 
     // in miliseconds
     const units = {
-        year  : 24 * 60 * 60 * 1000 * 365,
-        month : 24 * 60 * 60 * 1000 * 365/12,
-        day   : 24 * 60 * 60 * 1000,
-        hour  : 60 * 60 * 1000,
+        year: 24 * 60 * 60 * 1000 * 365,
+        month: 24 * 60 * 60 * 1000 * 365 / 12,
+        day: 24 * 60 * 60 * 1000,
+        hour: 60 * 60 * 1000,
         minute: 60 * 1000,
         second: 1000
     }
 
-    const rtf = new Intl.RelativeTimeFormat('en', { style: 'narrow', numeric: 'auto' })
+    const rtf = new Intl.RelativeTimeFormat('en', {style: 'narrow', numeric: 'auto'})
 
     const getRelativeTime = (d1, d2 = new Date()) => {
         const elapsed = d1 - d2
@@ -24,7 +24,7 @@ function App() {
         // "Math.abs" accounts for both "past" & "future" scenarios
         for (const u in units)
             if (Math.abs(elapsed) > units[u] || u === 'second')
-                return rtf.format(Math.round(elapsed/units[u]), u)
+                return rtf.format(Math.round(elapsed / units[u]), u)
     }
 
     const [homeStatus, setHomeStatus] = useState({})
@@ -37,7 +37,7 @@ function App() {
     const [rainModule, setRainModule] = useState({});
     const [mainStation, setMainStation] = useState({});
     const [therm, setTherm] = useState({});
-
+    const [time, setTime] = useState(new Date());
 
     function signup(tokenId) {
         const user = {
@@ -67,123 +67,178 @@ function App() {
         });
     }
 
-    useEffect(() => {
-        let tokenId = localStorage.getItem("tokenId");
-        if (tokenId) {
-            console.log("I have a tokenId");
-            const authRequest = {
-                username: tokenId,
-            };
-            fetch("/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "Application/JSON",
-                },
-                body: JSON.stringify(authRequest),
-            }).then(response => {
-                if (response.status === 200) {
-                    return response.json();
-                } else if (response.status === 404) {
-                    console.log("Token not found on server!")
-                    return signup(tokenId);
-                } else {
-                    console.dir(response);
+    function updateStatus(homeId) {
+        fetch("/api/homestatus?home_id=" + homeId, {
+            method: "GET",
+            headers: {
+                "Authorization": "Bearer " + sessionStorage.getItem("token")
+            }
+        })
+            .then(response => {
+                if (response.status !== 200) {
+                    console.log("homestatus status code: " + response.status);
                 }
-            }).then(responseJson => {
-                console.dir(responseJson);
-                sessionStorage.setItem("token", responseJson.token);
-                return fetch("/api/whoami", {
-                    method: "GET",
-                    headers: {
-                        "Authorization": "Bearer " + sessionStorage.getItem("token")
+                return response.json()
+            })
+            .then(homeStatus => {
+                setHomeStatus(homeStatus.body.home);
+                //console.dir(homeStatus.body);
+                homeStatus.body.home.modules.forEach(module => {
+                    if (module.type === 'NAMain') {
+                        setMainStation(module);
+                    } else if (module.type === 'NATherm1') {
+                        setTherm(module);
+                    } else if (module.type === 'NAModule3') {
+                        setRainModule(module);
                     }
-                });
-            }).then(response => {
-                console.dir(response);
-                return response.json();
-            }).then(responseJson => {
-                console.dir(responseJson);
-            }).then(x => {
-                return fetch("/api/homesdata", {
-                    method: "GET",
-                    headers: {
-                        "Authorization": "Bearer " + sessionStorage.getItem("token")
-                    }
-                })
-            }).then(response => response.json())
-                .then(homesData => {
-                    console.dir(homesData);
-                    console.dir(homesData.body.homes[0]);
-                    setHomesData(homesData.body.homes[0]);
-                    return homesData.body.homes[0].id;
-                }).then(homeId => {
-                return fetch("/api/homestatus?home_id="+homeId, {
-                    method: "GET",
-                    headers: {
-                        "Authorization": "Bearer " + sessionStorage.getItem("token")
+                    if (module.id === '02:00:00:a9:a2:14') {
+                        setOutdoorModule(module);
+                    } else if (module.id === '03:00:00:0e:f9:6c') {
+                        setPoolHouseModule(module);
+                    } else if (module.id === '03:00:00:0e:f9:3a') {
+                        setHomeOfficeModule(module);
+                    } else if (module.id === '03:00:00:0e:eb:16') {
+                        setBedroomModule(module);
                     }
                 })
-            }).then(response => response.json())
-                .then(homeStatus => {
-                    console.dir(homeStatus.body.home);
-                    setHomeStatus(homeStatus.body.home);
-                    homeStatus.body.home.modules.forEach(module => {
-                        console.log("Module " + module.id);
-                        if (module.type === 'NAMain') {
-                            setMainStation(module);
-                        } else if (module.type === 'NATherm1') {
-                            setTherm(module);
-                        } else if (module.type === 'NAModule3') {
-                            setRainModule(module);
+            })
+    }
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTime(new Date());
+            updateStatus(homesData.id)
+        }, 20000);
+
+        return () => clearInterval(interval);
+    }, [homesData]);
+
+    useEffect(() => {
+            let tokenId = localStorage.getItem("tokenId");
+            if (tokenId) {
+                console.log("I have a tokenId");
+                const authRequest = {
+                    username: tokenId,
+                };
+                fetch("/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "Application/JSON",
+                    },
+                    body: JSON.stringify(authRequest),
+                }).then(response => {
+                    if (response.status === 200) {
+                        return response.json();
+                    } else if (response.status === 404) {
+                        console.log("Token not found on server!")
+                        return signup(tokenId);
+                    } else {
+                        console.dir(response);
+                    }
+                }).then(responseJson => {
+                    console.dir(responseJson);
+                    sessionStorage.setItem("token", responseJson.token);
+                    return fetch("/api/whoami", {
+                        method: "GET",
+                        headers: {
+                            "Authorization": "Bearer " + sessionStorage.getItem("token")
                         }
-                        if (module.id === '02:00:00:a9:a2:14') {
-                            setOutdoorModule(module);
-                        } else if (module.id === '03:00:00:0e:f9:6c') {
-                            setPoolHouseModule(module);
-                        } else if (module.id === '03:00:00:0e:f9:3a') {
-                            setHomeOfficeModule(module);
-                        } else if (module.id === '03:00:00:0e:eb:16') {
-                            setBedroomModule(module);
+                    });
+                }).then(response => {
+                    console.dir(response);
+                    return response.json();
+                }).then(responseJson => {
+                    console.dir(responseJson);
+                }).then(x => {
+                    return fetch("/api/homesdata", {
+                        method: "GET",
+                        headers: {
+                            "Authorization": "Bearer " + sessionStorage.getItem("token")
                         }
                     })
-                })
-
-        }
-        if (!tokenId) {
-            console.log("No token ID yet !")
-            tokenId = window.crypto.randomUUID();
-            console.log("Token ID created: " + tokenId);
-            return signup(tokenId);
-        }
-    }, []);
+                }).then(response => response.json())
+                    .then(homesData => {
+                        console.dir(homesData);
+                        console.dir(homesData.body.homes[0]);
+                        setHomesData(homesData.body.homes[0]);
+                        return homesData.body.homes[0].id;
+                    }).then(homeId => {
+                    return updateStatus(homeId);
+                });
+            }
+            if (!tokenId) {
+                console.log("No token ID yet !")
+                tokenId = window.crypto.randomUUID();
+                console.log("Token ID created: " + tokenId);
+                return signup(tokenId);
+            }
+        },[]
+    );
 
     return (
         <div className="App">
-            <header className="App-header">
-                <p>Outdoor temperature
-                    is {outdoorModule.temperature} ({getRelativeTime(new Date(outdoorModule.ts * 1000))}) and humidity
-                    is {outdoorModule.humidity}%</p>
-                <p>Rain {rainModule.rain}mm/h ({getRelativeTime(new Date(rainModule.ts * 1000))}), last 1h: {rainModule.sum_rain_1}mm, last 24h: {rainModule.sum_rain_24}mm</p>
-                <p>Inside temperature
-                    is {mainStation.temperature} ({getRelativeTime(new Date(mainStation.ts * 1000))}) and humidity
-                    is {mainStation.humidity}% CO2 {mainStation.co2}ppm noise {mainStation.noise}dB</p>
-                <p>Pool House temperature
-                    is {poolHouseModule.temperature} ({getRelativeTime(new Date(poolHouseModule.ts * 1000))}) and
-                    humidity
-                    is {poolHouseModule.humidity}%</p>
-                <p>Home Office temperature
-                    is {homeOfficeModule.temperature} ({getRelativeTime(new Date(homeOfficeModule.ts * 1000))}) and
-                    humidity
-                    is {homeOfficeModule.humidity}%</p>
-                <p>Bedroom temperature
-                    is {bedroomModule.temperature} ({getRelativeTime(new Date(bedroomModule.ts * 1000))}) and
-                    humidity
-                    is {bedroomModule.humidity}%</p>
-                <p>Pellets heating is {therm.boiler_status ? "ON" : "OFF"} boost: {therm.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>
-                <p>Message: {msg}</p>
-            </header>
+            <div className={"grid"}>
+                <div>
+                    <p>Outdoor</p>
+                    <p className={"temperature"}>{outdoorModule.temperature}</p>
+                    <p>{outdoorModule.humidity}%</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(outdoorModule.ts * 1000))}</p>
+                </div>
+                <div>
+                    <p>Indoor</p>
+                    <p className={"temperature"}>{mainStation.temperature}</p>
+                    <p>{mainStation.humidity}%</p>
+                    <p>CO2 {mainStation.co2}ppm</p>
+                    <p>noise {mainStation.noise}dB</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(mainStation.ts * 1000))}</p>
+
+                </div>
+                <div>
+                    <p>Rain</p>
+                    <p>{rainModule.rain}mm/h</p>
+                    <p>last 1h: {rainModule.sum_rain_1}mm</p>
+                    <p>last 24h: {rainModule.sum_rain_24}mm</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(rainModule.ts * 1000))}</p>
+                </div>
+                <div>
+                    <p>Pool House</p>
+                    <p className={"temperature"}>{poolHouseModule.temperature}</p>
+                    <p>{poolHouseModule.humidity}%</p>
+                    <p>CO2 {poolHouseModule.co2}ppm</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(poolHouseModule.ts * 1000))}</p>
+                </div>
+                <div>
+                    <p>Home Office</p>
+                    <p className={"temperature"}>{homeOfficeModule.temperature}</p>
+                    <p>{homeOfficeModule.humidity}%</p>
+                    <p>CO2 {homeOfficeModule.co2}ppm</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(homeOfficeModule.ts * 1000))}</p>
+                </div>
+                <div>
+                    <p>Bedroom</p>
+                    <p className={"temperature"}>{bedroomModule.temperature}</p>
+                    <p>{bedroomModule.humidity}%</p>
+                    <p>CO2 {bedroomModule.co2}ppm</p>
+                    <p className={"relative-time"}>{getRelativeTime(new Date(bedroomModule.ts * 1000))}</p>
+                </div>
+                <div>
+                    <p>Pellets</p>
+                    <p>Temp: {homeStatus.rooms ? homeStatus.rooms[0].therm_measured_temperature : ""}</p>
+                    <p>Set: {homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature: ""}</p>
+                    <p>Heating: {therm.boiler_status ? "ON" : "OFF"}</p>
+                    <p>Boost: {therm.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>
+                    <p>Mode: {homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : ""}</p>
+                </div>
+                <div>
+                    <p>Time: {time.toISOString()}</p>
+                </div>
+                <div>
+                    <p>Message: {msg}</p>
+                </div>
+            </div>
         </div>
     );
+
 }
 
 export default App;

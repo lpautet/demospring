@@ -36,3 +36,27 @@
     transform: rotate(360deg);
   }
 }
+
+.grid {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  background-color: darkslategrey;
+  padding: 10px;
+}
+
+.grid > div {
+  background-color: #f1f1f1;
+  border: 1px solid black;
+  padding: 20px;
+  font-size: 1em;
+  text-align: center;
+}
+
+.relative-time {
+  color: grey;
+  font-size: 0.8em;
+}
+
+.temperature {
+  font-size: 2em;
+}

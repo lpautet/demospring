@@ -55,14 +55,6 @@ public class ApiController {
                                     .build())));
         };
     }
-//    WebClient.builder().filter((request, next) -> {
-//        final Mono<ClientResponse> response = next.exchange(request);
-//        return response.filter(clientResponse -> clientResponse.statusCode() != HttpStatus.UNAUTHORIZED)
-//                // handle 401 Unauthorized (token expired)
-//                .switchIfEmpty(next.exchange(ClientRequest.from(request)
-//                        .headers(httpHeaders -> httpHeaders.setBearerAuth(getNewToken()))
-//                        .build()));
-//    }).build();
 
     @GetMapping("/hello")
     public Mono<String> getHello() {
