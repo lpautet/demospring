@@ -41,15 +41,16 @@
   display: grid;
   grid-template-columns: auto auto auto;
   background-color: darkslategrey;
-  padding: 10px;
+  padding: .2em;
 }
 
 .grid > div {
   background-color: #f1f1f1;
-  border: 1px solid black;
-  padding: 20px;
+  border: .3em solid darkslategrey;
+  padding: .1em;
   font-size: 1em;
   text-align: center;
+  border-radius: 2em;
 }
 
 .relative-time {
@@ -59,4 +60,7 @@
 
 .temperature {
   font-size: 2em;
+}
+
+.outdoor {
 }

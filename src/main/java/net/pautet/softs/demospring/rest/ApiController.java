@@ -33,8 +33,6 @@ public class ApiController {
     private NetatmoConfig netatmoConfig;
     private UserService userService;
 
-    private final WebClient apiWebClient = WebClient.builder().baseUrl("https://api.netatmo.com/api").build();
-
     private WebClient createApiWebClient(Principal principal) {
         return WebClient.builder().baseUrl("https://api.netatmo.com/api").filter(tokenHandlingFilter(principal)).build();
     }
@@ -47,8 +45,8 @@ public class ApiController {
                     .headers(httpHeaders -> httpHeaders.setBearerAuth(user.getAccessToken()))
                     .build();
             return next.exchange(newRequest)
-                    .filter(clientResponse -> clientResponse.statusCode() != HttpStatus.UNAUTHORIZED)
-                    // handle 401 Unauthorized (token expired)
+                    .filter(clientResponse -> clientResponse.statusCode() != HttpStatus.FORBIDDEN)
+                    // handle 403 FORBIDDEN (Access token expired if error.code == 3)
                     .switchIfEmpty(refreshToken(user).flatMap(updatedUser ->
                             next.exchange(ClientRequest.from(request)
                                     .headers(httpHeaders -> httpHeaders.setBearerAuth(updatedUser.getAccessToken()))
@@ -73,19 +71,24 @@ public class ApiController {
 //        return apiWebClient.get().uri("/homesdata").
 //                header("Authorization", "Bearer " + user.getAccessToken())
 //                .retrieve().bodyToMono(String.class);
-        return createApiWebClient(principal).get().uri("/homesdata").retrieve().bodyToMono(String.class);
+        return createApiWebClient(principal).get().uri("/homesdata")
+                .retrieve().bodyToMono(String.class);
     }
 
     @GetMapping("/homestatus")
     public Mono<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
-//        User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-//        return apiWebClient.get().uri(uriBuilder -> uriBuilder.path("/homestatus")
-//                        .queryParam("home_id", homeId).build())
-//                .header("Authorization", "Bearer " + user.getAccessToken())
-//                .retrieve().bodyToMono(String.class);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId).build())
-                .retrieve().bodyToMono(String.class);
+                .retrieve()
+                .onStatus(HttpStatus.FORBIDDEN::equals, response -> response.bodyToMono(String.class).map(string -> {
+                    System.out.println("/homestatus: FORBIDDEN: " + string);
+                    return new Exception("getHomeStatus: FORBIDDEN " + string);
+                }))
+                .onStatus(HttpStatus.SERVICE_UNAVAILABLE::equals, response -> response.bodyToMono(String.class).map(string -> {
+                    System.out.println("/homestatus: SERVICE_UNAVAILABLE: " + string);
+                    return new Exception("getHomeStatus: SERVICE_UNAVAILABLE " + string);
+                }))
+                .bodyToMono(String.class);
     }
 
     private Mono<User> refreshToken(User user) {

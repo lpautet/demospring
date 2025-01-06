@@ -60,7 +60,6 @@ function App() {
             }
         }).then(user => {
             if (user) {
-                console.dir(user);
                 localStorage.setItem("tokenId", tokenId);
                 window.location.replace("/loginAtmo?id=" + tokenId);
             }
@@ -68,6 +67,9 @@ function App() {
     }
 
     function updateStatus(homeId) {
+        if (!homeId) {
+            return;
+        }
         fetch("/api/homestatus?home_id=" + homeId, {
             method: "GET",
             headers: {
@@ -76,12 +78,14 @@ function App() {
         })
             .then(response => {
                 if (response.status !== 200) {
+                    setMsg("homestatus: " + response.status + " " + response.statusText);
                     console.log("homestatus status code: " + response.status);
                 }
-                return response.json()
+                return response.json();
             })
             .then(homeStatus => {
                 setHomeStatus(homeStatus.body.home);
+                setMsg("");
                 //console.dir(homeStatus.body);
                 homeStatus.body.home.modules.forEach(module => {
                     if (module.type === 'NAMain') {
@@ -107,6 +111,10 @@ function App() {
     useEffect(() => {
         const interval = setInterval(() => {
             setTime(new Date());
+            if (!homesData) {
+                setMsg("Waiting for homes data...");
+                return;
+            }
             updateStatus(homesData.id)
         }, 20000);
 
@@ -136,7 +144,6 @@ function App() {
                         console.dir(response);
                     }
                 }).then(responseJson => {
-                    console.dir(responseJson);
                     sessionStorage.setItem("token", responseJson.token);
                     return fetch("/api/whoami", {
                         method: "GET",
@@ -145,7 +152,6 @@ function App() {
                         }
                     });
                 }).then(response => {
-                    console.dir(response);
                     return response.json();
                 }).then(responseJson => {
                     console.dir(responseJson);
@@ -158,9 +164,9 @@ function App() {
                     })
                 }).then(response => response.json())
                     .then(homesData => {
-                        console.dir(homesData);
                         console.dir(homesData.body.homes[0]);
                         setHomesData(homesData.body.homes[0]);
+                        setMsg("");
                         return homesData.body.homes[0].id;
                     }).then(homeId => {
                     return updateStatus(homeId);
@@ -178,61 +184,62 @@ function App() {
     return (
         <div className="App">
             <div className={"grid"}>
-                <div>
+                <div className={"outdoor"}>
                     <p>Outdoor</p>
-                    <p className={"temperature"}>{outdoorModule.temperature}</p>
+                    <p className={"temperature"}>{outdoorModule.temperature}&deg;</p>
                     <p>{outdoorModule.humidity}%</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(outdoorModule.ts * 1000))}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Indoor</p>
-                    <p className={"temperature"}>{mainStation.temperature}</p>
+                    <p className={"temperature"}>{mainStation.temperature}&deg;</p>
                     <p>{mainStation.humidity}%</p>
                     <p>CO2 {mainStation.co2}ppm</p>
                     <p>noise {mainStation.noise}dB</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(mainStation.ts * 1000))}</p>
 
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Rain</p>
                     <p>{rainModule.rain}mm/h</p>
                     <p>last 1h: {rainModule.sum_rain_1}mm</p>
                     <p>last 24h: {rainModule.sum_rain_24}mm</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(rainModule.ts * 1000))}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Pool House</p>
-                    <p className={"temperature"}>{poolHouseModule.temperature}</p>
+                    <p className={"temperature"}>{poolHouseModule.temperature}&deg;</p>
                     <p>{poolHouseModule.humidity}%</p>
                     <p>CO2 {poolHouseModule.co2}ppm</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(poolHouseModule.ts * 1000))}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Home Office</p>
-                    <p className={"temperature"}>{homeOfficeModule.temperature}</p>
+                    <p className={"temperature"}>{homeOfficeModule.temperature}&deg;</p>
                     <p>{homeOfficeModule.humidity}%</p>
                     <p>CO2 {homeOfficeModule.co2}ppm</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(homeOfficeModule.ts * 1000))}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Bedroom</p>
-                    <p className={"temperature"}>{bedroomModule.temperature}</p>
+                    <p className={"temperature"}>{bedroomModule.temperature}&deg;</p>
                     <p>{bedroomModule.humidity}%</p>
                     <p>CO2 {bedroomModule.co2}ppm</p>
                     <p className={"relative-time"}>{getRelativeTime(new Date(bedroomModule.ts * 1000))}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Pellets</p>
-                    <p>Temp: {homeStatus.rooms ? homeStatus.rooms[0].therm_measured_temperature : ""}</p>
-                    <p>Set: {homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature: ""}</p>
+                    <p>Temp: {homeStatus.rooms ? homeStatus.rooms[0].therm_measured_temperature : ""}&deg;</p>
+                    <p>Set: {homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature: ""}&deg;</p>
                     <p>Heating: {therm.boiler_status ? "ON" : "OFF"}</p>
                     <p>Boost: {therm.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>
                     <p>Mode: {homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : ""}</p>
                 </div>
-                <div>
-                    <p>Time: {time.toISOString()}</p>
+                <div className={"card"}>
+                    <p>Time</p>
+                    <p>{time.toISOString()}</p>
                 </div>
-                <div>
+                <div className={"card"}>
                     <p>Message: {msg}</p>
                 </div>
             </div>

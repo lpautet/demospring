@@ -7,6 +7,9 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.sql.Timestamp;
+import java.util.Date;
+
 @Table(name = "users")
 @Data
 @AllArgsConstructor
@@ -16,12 +19,8 @@ public class User {
     @Id
     private Long id;
     private String username;
-    private String password;
     private String accessToken;
     private String refreshToken;
-    //private long expiresIn;
+    private Long expiresAt;
 
-    public void setPassword(String password) {
-        this.password = new BCryptPasswordEncoder().encode(password);
-    }
 }

@@ -18,6 +18,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
+import java.util.Date;
 import java.util.Map;
 
 @RestController
@@ -46,9 +47,7 @@ public class AuthController {
         return Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(uri).build());
     }
 
-
-
-    @GetMapping("/atmocb")
+    @GetMapping(REDIRECT_ENDPOINT)
     public Mono<ResponseEntity<String>> atmocb(@RequestParam String state, @RequestParam String code) {
         return tokenWebClient.post().uri("/oauth2/token").body(
                         BodyInserters.fromFormData("grant_type", "authorization_code")
@@ -65,6 +64,8 @@ public class AuthController {
                                 .flatMap(user -> {
                                     user.setAccessToken(tokenResponse.getAccessToken());
                                     user.setRefreshToken(tokenResponse.getRefreshToken());
+                                    user.setExpiresAt(System.currentTimeMillis() + tokenResponse.getExpiresIn()*1000);
+                                    System.out.println(new Date(user.getExpiresAt()));
                                     return userService.save(user);
                                 })
                                 .then(Mono.just(ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT)
@@ -73,8 +74,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public Mono<ResponseEntity<AuthResponse>> login(@RequestBody AuthRequest authRequest) {
-        return userService.findByUsername(authRequest.getUsername())
+    public Mono<ResponseEntity<AuthResponse>> login(@RequestBody SignupRequest signupRequest) {
+        return userService.findByUsername(signupRequest.getUsername())
                 .map(user ->
                         ResponseEntity.ok(new AuthResponse(jwtUtil.generateToken(user.getUsername()))))
                 .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
@@ -82,8 +83,6 @@ public class AuthController {
 
     @PostMapping("/signup")
     public Mono<ResponseEntity<User>> signup(@RequestBody User user) {
-        // Encrypt password before saving
-        //user.setPassword(user.getPassword());
         user.setId(null);
         return userService.save(user).map(ResponseEntity::ok);
     }

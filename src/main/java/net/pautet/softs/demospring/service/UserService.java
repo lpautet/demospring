@@ -19,7 +19,6 @@ public class UserService {
     }
 
     public Mono<User> save(User user) {
-        //user.setPassword(user.getPassword()); // Encrypt password before saving
         return userRepository.save(user);
     }
 }
