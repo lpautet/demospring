@@ -44,7 +44,7 @@ function App() {
             username: tokenId,
             password: "",
         };
-        fetch("/signup", {
+        fetch("/api/auth/signup", {
             method: "POST",
             headers: {
                 "Content-Type": "Application/JSON",
@@ -61,7 +61,7 @@ function App() {
         }).then(user => {
             if (user) {
                 localStorage.setItem("tokenId", tokenId);
-                window.location.replace("/loginAtmo?id=" + tokenId);
+                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
             }
         });
     }
@@ -128,7 +128,7 @@ function App() {
                 const authRequest = {
                     username: tokenId,
                 };
-                fetch("/login", {
+                fetch("/api/auth/login", {
                     method: "POST",
                     headers: {
                         "Content-Type": "Application/JSON",

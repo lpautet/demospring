@@ -2,11 +2,11 @@ package net.pautet.softs.demospring.config;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -16,11 +16,16 @@ import java.util.function.Function;
 @Component
 public class JWTUtil {
 
+    private final AppConfig appConfig;
     private Key key;
+
+    public JWTUtil(AppConfig appConfig) {
+        this.appConfig = appConfig;
+    }
 
     @PostConstruct
     public void init() {
-        this.key = Keys.secretKeyFor(SignatureAlgorithm.HS256); // Creates a secure key
+        this.key = Keys.hmacShaKeyFor(appConfig.getJwtSecret().getBytes(StandardCharsets.UTF_8));
     }
 
     public String extractUsername(String token) {

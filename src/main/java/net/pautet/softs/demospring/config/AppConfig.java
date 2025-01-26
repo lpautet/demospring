@@ -12,5 +12,6 @@ import org.springframework.context.annotation.Configuration;
 public class AppConfig {
 
     private String redirectUri;
+    private String jwtSecret;
 
 }
