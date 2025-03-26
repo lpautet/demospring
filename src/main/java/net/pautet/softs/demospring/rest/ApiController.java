@@ -2,12 +2,14 @@ package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.UserRepository;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
+import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientProperties;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,10 +43,13 @@ import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
 @AllArgsConstructor
 public class ApiController {
 
+    public static final String NETATMO_CALLBACK_ENDPOINT = "/api" + "/netatmo/callback";
+
     private NetatmoConfig netatmoConfig;
     private UserRepository userService;
     private NetatmoService netatmoService;
     private SalesforceService salesforceService;
+    private AppConfig appConfig;
 
     private class RefreshTokenInterceptor implements ClientHttpRequestInterceptor {
 
@@ -159,11 +164,11 @@ public class ApiController {
     @GetMapping("/netatmo/authorize")
     public RedirectView authorizeNetatmo() {
         System.out.println("Authorize Scope:" + NETATMO_SCOPE);
-        System.out.println("Authorize redirect_uri:" + netatmoConfig.getRedirectUri());
+        System.out.println("Authorize redirect_uri:" + appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
         System.out.println("Authorize client_id:" + netatmoConfig.getClientId());
         String authUrl = "https://api.netatmo.com/oauth2/authorize" +
                 "?client_id=" + netatmoConfig.getClientId() +
-                "&redirect_uri=" + URLEncoder.encode(netatmoConfig.getRedirectUri()) +
+                "&redirect_uri=" + URLEncoder.encode(appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT) +
                 "&scope=" + NETATMO_SCOPE +
                 "&state=netatmo_auth_state"; // Simple state for security
         return new RedirectView(authUrl);

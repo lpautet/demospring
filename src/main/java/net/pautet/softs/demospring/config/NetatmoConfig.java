@@ -11,6 +11,4 @@ public class NetatmoConfig {
 
     private String clientId;
     private String clientSecret;
-    private String redirectUri;
-
 }

@@ -3,6 +3,7 @@ package net.pautet.softs.demospring.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
 import net.pautet.softs.demospring.entity.TokenResponse;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 
+import static net.pautet.softs.demospring.rest.ApiController.NETATMO_CALLBACK_ENDPOINT;
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_API_URI;
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
 
@@ -35,6 +37,7 @@ public class NetatmoService {
     private String netatmoRefreshToken;
     private long expiresAt;
     private String accessToken;
+    private AppConfig appConfig;
 
     private final SalesforceCredentials salesforceCredentials;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -80,7 +83,7 @@ public class NetatmoService {
         formData.add("client_id", netatmoConfig.getClientId());
         formData.add("client_secret", netatmoConfig.getClientSecret());
         formData.add("code", code);
-        formData.add("redirect_uri", netatmoConfig.getRedirectUri());
+        formData.add("redirect_uri",  appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
         formData.add("scope", NETATMO_SCOPE);
         ResponseEntity<String> response = RestClient.builder().baseUrl(NETATMO_API_URI).build().post().uri("/oauth2/token").body(formData)
                 .retrieve().toEntity(String.class);
