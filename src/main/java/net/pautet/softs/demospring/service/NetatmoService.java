@@ -50,7 +50,8 @@ public class NetatmoService {
                 .build();
     }
 
-    public NetatmoService(NetatmoConfig netatmoConfig, SalesforceCredentials salesforceCredentials, StringRedisTemplate redisTemplate) {
+    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, SalesforceCredentials salesforceCredentials, StringRedisTemplate redisTemplate) {
+        this.appConfig = appConfig;
         this.netatmoConfig = netatmoConfig;
         this.salesforceCredentials = salesforceCredentials;
         this.redisTemplate = redisTemplate;
