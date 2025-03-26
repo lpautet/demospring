@@ -1,7 +1,6 @@
 package net.pautet.softs.demospring.security;
 
 import lombok.AllArgsConstructor;
-import net.pautet.softs.demospring.config.JWTUtil;
 import net.pautet.softs.demospring.repository.UserRepository;
 import net.pautet.softs.demospring.service.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
@@ -42,7 +41,7 @@ public class WebSecurityConfig {
                 .sessionManagement(sessionManagement -> sessionManagement.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorizeRequests ->
                         authorizeRequests
-                                .requestMatchers("/api/auth/**","/*", "/static/**").permitAll()
+                                .requestMatchers("/api/auth/**","/*", "/static/**", "/api/netatmo/authorize", "/api/netatmo/callback").permitAll()
                                 .anyRequest().authenticated()
                 );
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);

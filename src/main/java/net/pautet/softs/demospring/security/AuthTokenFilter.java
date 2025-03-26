@@ -5,7 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
-import net.pautet.softs.demospring.config.JWTUtil;
+import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.UserRepository;
 import net.pautet.softs.demospring.service.CustomUserDetailsService;
@@ -19,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@Slf4j
 @Component
 @AllArgsConstructor
 public class AuthTokenFilter extends OncePerRequestFilter {
@@ -43,7 +44,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception e) {
-            System.out.println("Cannot set user authentication: " + request.getRequestURI() + " " + e);
+            log.error("Cannot set user authentication: {}", request.getRequestURI(), e);
         }
         filterChain.doFilter(request, response);
     }

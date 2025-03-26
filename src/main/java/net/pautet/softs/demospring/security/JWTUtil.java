@@ -1,9 +1,10 @@
-package net.pautet.softs.demospring.config;
+package net.pautet.softs.demospring.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import net.pautet.softs.demospring.config.AppConfig;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;

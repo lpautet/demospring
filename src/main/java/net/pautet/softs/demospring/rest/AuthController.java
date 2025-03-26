@@ -2,13 +2,14 @@ package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
 import net.pautet.softs.demospring.config.AppConfig;
-import net.pautet.softs.demospring.config.JWTUtil;
+import net.pautet.softs.demospring.security.JWTUtil;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.AuthResponse;
 import net.pautet.softs.demospring.entity.SignupRequest;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.UserRepository;
+import net.pautet.softs.demospring.service.NetatmoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
@@ -28,13 +29,14 @@ public class AuthController {
     static final String AUTH_ENDPOINTS_PREFIX = "/api/auth";
     static final String CALLBACK_ATMO = "/callbackAtmo";
     static final String REDIRECT_ENDPOINT = AUTH_ENDPOINTS_PREFIX + CALLBACK_ATMO;
-    static final String NETATMO_SCOPE = "read_station read_thermostat";
-    static final String NETATMO_API_URI = "https://api.netatmo.com";
+    public static final String NETATMO_SCOPE = "read_station read_thermostat";
+    public static final String NETATMO_API_URI = "https://api.netatmo.com";
 
     private NetatmoConfig netatmoConfig;
     private JWTUtil jwtUtil;
     private UserRepository userRepository;
     private AppConfig appConfig;
+    private NetatmoService netatmoService;
 
     private final RestClient tokenRestClient = RestClient.builder().baseUrl(NETATMO_API_URI).build();
 
