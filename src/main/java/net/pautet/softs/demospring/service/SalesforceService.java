@@ -45,7 +45,7 @@ public class SalesforceService {
 
     public String fetchDataCloudData() throws IOException {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("sql", "SELECT * FROM Netatmo_Weather_Connector_Weath_8654E091__dll");
+        payload.put("sql", "SELECT * FROM Netatmo_Weather_Connector_Weath_D902105F__dll");
         ResponseEntity<String> responseEntity = salesforceConfig.createDataCloudApiClient().post()
                 .uri("/api/v2/query").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
