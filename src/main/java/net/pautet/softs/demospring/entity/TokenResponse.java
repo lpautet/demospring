@@ -25,8 +25,8 @@ public class TokenResponse {
     @JsonAlias("issued_token_type")
     private String issuedTokenType;
 
-    @JsonAlias("scope")
-    private String scope;
+//    @JsonAlias("scope")
+//    private String scope;
 
     @JsonAlias("id")
     private String id;
