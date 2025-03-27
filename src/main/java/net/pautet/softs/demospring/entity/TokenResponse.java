@@ -11,8 +11,23 @@ public class TokenResponse {
     private String accessToken;
 
     @JsonAlias("expires_in")
-    private long expiresIn;
+    private Long expiresIn;
 
     @JsonAlias("refresh_token")
     private String refreshToken;
+
+    @JsonAlias("instance_url")
+    private String instanceUrl;
+
+    @JsonAlias("token_type")
+    private String tokenType;
+
+    @JsonAlias("issued_token_type")
+    private String issuedTokenType;
+
+    @JsonAlias("scope")
+    private String scope;
+
+    @JsonAlias("id")
+    private String id;
 }

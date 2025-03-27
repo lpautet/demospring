@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.Date;
 
@@ -57,7 +58,7 @@ public class AuthController {
     }
 
     @GetMapping(CALLBACK_ATMO)
-    public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) {
+    public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "authorization_code");
         formData.add("client_id", netatmoConfig.getClientId());
@@ -68,6 +69,9 @@ public class AuthController {
         TokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
                 .retrieve().body(TokenResponse.class);
         User user = userRepository.findByUsername(state);
+        if (tokenResponse == null) {
+            throw new IOException("Unexpected null tokenResponse!");
+        }
         user.setAccessToken(tokenResponse.getAccessToken());
         user.setRefreshToken(tokenResponse.getRefreshToken());
         user.setExpiresAt(System.currentTimeMillis() + tokenResponse.getExpiresIn()*1000);

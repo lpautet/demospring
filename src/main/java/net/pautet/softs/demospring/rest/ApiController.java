@@ -9,7 +9,6 @@ import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.UserRepository;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
-import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientProperties;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +28,7 @@ import org.springframework.web.servlet.view.RedirectView;
 
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.Arrays;
 import java.util.Collections;
@@ -70,11 +70,30 @@ public class ApiController {
             }
             return response;
         }
+
+        private User refreshToken(User user) throws IOException {
+            MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+            formData.add("grant_type", "refresh_token");
+            formData.add("client_id", netatmoConfig.getClientId());
+            formData.add("client_secret", netatmoConfig.getClientSecret());
+            formData.add("refresh_token", user.getRefreshToken());
+            TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
+                    .build().post().uri("/oauth2/token").body(formData)
+                    .retrieve()
+                    .body(TokenResponse.class);
+            log.info("Token refreshed!");
+            if (tokenResponse == null) {
+                throw new IOException("Unexpected null tokenResponse!");
+            }
+            user.setAccessToken(tokenResponse.getAccessToken());
+            user.setRefreshToken(tokenResponse.getRefreshToken());
+            return userService.save(user);
+        }
     }
 
     private RestClient createApiWebClient(Principal principal) {
         User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-        return RestClient.builder().baseUrl("https://api.netatmo.com/api")
+        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
                 .defaultHeader("Authorization", "Bearer " + user.getAccessToken())
                 .requestInterceptor(new RefreshTokenInterceptor(principal))
                 .build();
@@ -94,19 +113,18 @@ public class ApiController {
 
     @GetMapping("/homestatus")
     public ResponseEntity<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
-        final ResponseEntity[] re = {null};
         String ret = createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId).build())
                 .retrieve()
                 .onStatus(HttpStatus.FORBIDDEN::equals, (request, response) -> {
                     String body = new String(response.getBody().readAllBytes());
                     log.error("/homestatus: FORBIDDEN: {}", body);
-                    re[0] = ResponseEntity.status(HttpStatus.FAILED_DEPENDENCY).body("getHomeStatus: FORBIDDEN " + body);
+                    throw new IOException("getHomeStatus: FORBIDDEN " + body);
                 })
                 .onStatus(HttpStatus.SERVICE_UNAVAILABLE::equals, (request, response) -> {
                     String body = new String(response.getBody().readAllBytes());
                     log.error("/homestatus: SERVICE_UNAVAILABLE: {}", body);
-                    re[0] = ResponseEntity.status(HttpStatus.FAILED_DEPENDENCY).body("getHomeStatus: SERVICE_UNAVAILABLE " + body);
+                    throw new IOException("getHomeStatus: SERVICE_UNAVAILABLE " + body);
                 })
                 .body(String.class);
         return ResponseEntity.ok(ret);
@@ -134,22 +152,6 @@ public class ApiController {
         return ResponseEntity.ok(System.getenv());
     }
 
-    private User refreshToken(User user) {
-        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
-        formData.add("grant_type", "refresh_token");
-        formData.add("client_id", netatmoConfig.getClientId());
-        formData.add("client_secret", netatmoConfig.getClientSecret());
-        formData.add("refresh_token", user.getRefreshToken());
-        TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
-                .build().post().uri("/oauth2/token").body(formData)
-                .retrieve()
-                .body(TokenResponse.class);
-        log.info("Token refreshed!");
-        user.setAccessToken(tokenResponse.getAccessToken());
-        user.setRefreshToken(tokenResponse.getRefreshToken());
-        return userService.save(user);
-    }
-
     @GetMapping("/salesforce/accounts")
     public String getAccounts() throws IOException {
         return salesforceService.fetchData();
@@ -163,12 +165,9 @@ public class ApiController {
     // New endpoint to start Netatmo authorization
     @GetMapping("/netatmo/authorize")
     public RedirectView authorizeNetatmo() {
-        System.out.println("Authorize Scope:" + NETATMO_SCOPE);
-        System.out.println("Authorize redirect_uri:" + appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
-        System.out.println("Authorize client_id:" + netatmoConfig.getClientId());
         String authUrl = "https://api.netatmo.com/oauth2/authorize" +
                 "?client_id=" + netatmoConfig.getClientId() +
-                "&redirect_uri=" + URLEncoder.encode(appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT) +
+                "&redirect_uri=" + URLEncoder.encode(appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT, StandardCharsets.UTF_8) +
                 "&scope=" + NETATMO_SCOPE +
                 "&state=netatmo_auth_state"; // Simple state for security
         return new RedirectView(authUrl);

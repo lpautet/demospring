@@ -1,18 +1,16 @@
 package net.pautet.softs.demospring.config;
 
 import io.jsonwebtoken.Jwts;
+import jakarta.annotation.PostConstruct;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
+import net.pautet.softs.demospring.entity.TokenResponse;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.security.KeyFactory;
@@ -32,8 +30,31 @@ public class SalesforceConfig {
     private String username;
     private String loginUrl;
 
-    @Bean
-    public SalesforceCredentials salesforceCredentials() throws Exception {
+    private SalesforceCredentials salesforceCredentials;
+
+    public RestClient createDataCloudApiClient() throws IOException {
+        if (this.salesforceCredentials.dataCloudAccessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+            log.info("Needs a new Access Token");
+            this.salesforceCredentials = getDataCloudToken(this.salesforceCredentials);
+        }
+        return RestClient.builder().baseUrl( salesforceCredentials.dataCloudInstanceUrl())
+                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.dataCloudAccessToken())
+                //  .requestInterceptor(new ApiController.RefreshTokenInterceptor(principal))
+                .build();
+    }
+
+    public RestClient createSalesforceApiClient() {
+        if (this.salesforceCredentials.salesforceAccessToken() == null) {
+            throw new IllegalStateException("No access token for Salesforce API");
+        }
+        return RestClient.builder().baseUrl( salesforceCredentials.salesforceInstanceUrl())
+                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
+                //  .requestInterceptor(new ApiController.RefreshTokenInterceptor(principal))
+                .build();
+    }
+
+    @PostConstruct
+    public void createSalesforceConfig() throws Exception {
         try {
             PrivateKey privateKey = loadPrivateKey();
             if (privateKey == null) {
@@ -50,12 +71,10 @@ public class SalesforceConfig {
                     .compact();
 
             // Get Salesforce token
-            String[] salesforceTokenData = getSalesforceToken(jwt);
-            String salesforceAccessToken = salesforceTokenData[0];
-            String instanceUrl = salesforceTokenData[1];
+            this.salesforceCredentials = getSalesforceToken(jwt);
 
             // Exchange for Data Cloud token
-            return getDataCloudToken(salesforceAccessToken, instanceUrl);
+            this.salesforceCredentials =  getDataCloudToken(salesforceCredentials);
         } catch (Exception e) {
             log.error("Error generating Salesforce tokens: ", e);
             throw e;
@@ -74,55 +93,42 @@ public class SalesforceConfig {
         return kf.generatePrivate(spec);
     }
 
-    private String[] getSalesforceToken(String jwt) throws IOException {
-        HttpClient httpClient = HttpClients.createDefault();
-        HttpPost post = new HttpPost(loginUrl + "/services/oauth2/token");
-        post.setHeader("Content-Type", "application/x-www-form-urlencoded");
-        String body = "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=" + jwt;
-        post.setEntity(new StringEntity(body));
-
-        HttpResponse response = httpClient.execute(post);
-        String responseBody = EntityUtils.toString(response.getEntity());
-        log.debug("Salesforce token response: {}", responseBody);
-
-        if (!responseBody.contains("access_token")) {
-            throw new IllegalStateException("Failed to retrieve Salesforce token: " + responseBody);
+    private SalesforceCredentials getSalesforceToken(String jwt) throws IOException {
+        if (loginUrl == null) {
+            throw new IllegalStateException("No loginUrl defined for getting salesforce Token");
+        }
+        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+        formData.add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+        formData.add("assertion", jwt);
+        TokenResponse tokenResponse = RestClient.builder().baseUrl(loginUrl)
+                .build().post().uri("/services/oauth2/token").body(formData)
+                .retrieve()
+                .body(TokenResponse.class);
+        if (tokenResponse == null) {
+            throw new IOException("Unexpected null TokenResponse for Salesforce token");
+        } else {
+            log.info("Salesforce access token response: {}", tokenResponse);
         }
 
-        String accessToken = parseAccessToken(responseBody);
-        String instanceUrl = parseInstanceUrl(responseBody);
-        return new String[]{accessToken, instanceUrl};
+        return new SalesforceCredentials(tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl(), null, null, null);
     }
 
-    private SalesforceCredentials getDataCloudToken(String salesforceAccessToken, String instanceUrl) throws IOException {
-        HttpClient httpClient = HttpClients.createDefault();
-        HttpPost post = new HttpPost(instanceUrl + "/services/a360/token");
-        post.setHeader("Content-Type", "application/x-www-form-urlencoded");
-        String body = "grant_type=urn:salesforce:grant-type:external:cdp&subject_token=" + salesforceAccessToken + "&subject_token_type=urn:ietf:params:oauth:token-type:access_token";
-        post.setEntity(new StringEntity(body));
-
-        HttpResponse response = httpClient.execute(post);
-        String responseBody = EntityUtils.toString(response.getEntity());
-        log.debug("Data Cloud token response: {}", responseBody);
-
-        if (!responseBody.contains("access_token")) {
-            throw new IllegalStateException("Failed to retrieve Data Cloud token: " + responseBody);
+    private SalesforceCredentials getDataCloudToken(SalesforceCredentials salesforceCredentials) throws IOException {
+        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+        formData.add("grant_type", "urn:salesforce:grant-type:external:cdp");
+        formData.add("subject_token", salesforceCredentials.salesforceAccessToken());
+        formData.add("subject_token_type","urn:ietf:params:oauth:token-type:access_token");
+        TokenResponse tokenResponse = createSalesforceApiClient().post().uri("/services/a360/token").body(formData)
+                .retrieve()
+                .body(TokenResponse.class);
+        if (tokenResponse == null) {
+            throw new IOException("Unexpected null TokenResponse for Salesforce token");
+        } else {
+            log.info("Data Cloud access token response: {}", tokenResponse);
         }
 
-        return new SalesforceCredentials(salesforceAccessToken, instanceUrl, parseAccessToken(responseBody), "https://" + parseInstanceUrl(responseBody));
+        long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();
+        return new SalesforceCredentials(salesforceCredentials.salesforceAccessToken(), salesforceCredentials.salesforceInstanceUrl(), tokenResponse.getAccessToken(), expiresAt,"https://" + tokenResponse.getInstanceUrl());
     }
 
-    private String parseAccessToken(String json) {
-        String tokenKey = "\"access_token\":\"";
-        int start = json.indexOf(tokenKey) + tokenKey.length();
-        int end = json.indexOf("\"", start);
-        return json.substring(start, end);
-    }
-
-    private String parseInstanceUrl(String json) {
-        String urlKey = "\"instance_url\":\"";
-        int start = json.indexOf(urlKey) + urlKey.length();
-        int end = json.indexOf("\"", start);
-        return json.substring(start, end);
-    }
 }
