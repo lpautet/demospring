@@ -3,6 +3,7 @@ package net.pautet.softs.demospring.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import jakarta.annotation.PostConstruct;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
 import net.pautet.softs.demospring.entity.TokenResponse;
@@ -24,6 +25,7 @@ import java.util.Date;
 @Slf4j
 @ConfigurationProperties("salesforce")
 @Configuration
+@Setter
 public class SalesforceConfig {
 
     private String clientId;
