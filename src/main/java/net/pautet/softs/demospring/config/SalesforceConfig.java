@@ -35,11 +35,12 @@ public class SalesforceConfig {
     private SalesforceCredentials salesforceCredentials;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private PrivateKey privateKey;
 
     public RestClient createDataCloudApiClient() throws IOException {
         if (this.salesforceCredentials.dataCloudAccessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
-            log.info("Needs a new Access Token");
-            this.salesforceCredentials = getDataCloudToken(this.salesforceCredentials);
+            log.info("Needs a new Data Cloud Access Token");
+            getDataCloudToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.dataCloudInstanceUrl())
                 .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.dataCloudAccessToken())
@@ -47,9 +48,10 @@ public class SalesforceConfig {
                 .build();
     }
 
-    public RestClient createSalesforceApiClient() {
-        if (this.salesforceCredentials.salesforceAccessToken() == null) {
-            throw new IllegalStateException("No access token for Salesforce API");
+    public RestClient createSalesforceApiClient() throws IOException {
+        if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+            log.info("Needs a new Salesforce Access Token");
+            getSalesforceToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceInstanceUrl())
                 .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
@@ -59,38 +61,16 @@ public class SalesforceConfig {
 
     @PostConstruct
     public void createSalesforceConfig() throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
-        PrivateKey privateKey = loadPrivateKey();
-        if (privateKey == null) {
-            throw new IllegalStateException("Private key could not be loaded");
-        }
-        if (loginUrl == null) {
-            throw new IllegalStateException("No salesforce.loginUrl defined");
-        }
-        if (clientId == null) {
-            throw new IllegalStateException("No salesforce.clientId defined");
-        }
-        if (username == null) {
-            throw new IllegalStateException("No salesforce.username defined");
-        }
-
-        long now = System.currentTimeMillis();
-        String jwt = Jwts.builder()
-                .issuer(clientId)
-                .subject(username)
-                .claim("aud", loginUrl)
-                .expiration(new Date(now + 3600 * 1000))
-                .signWith(privateKey)
-                .compact();
+        loadPrivateKey();
 
         // Get Salesforce token
-        this.salesforceCredentials = getSalesforceToken(jwt);
+        getSalesforceToken();
 
         // Exchange for Data Cloud token
-        this.salesforceCredentials = getDataCloudToken(salesforceCredentials);
-
+        getDataCloudToken();
     }
 
-    private PrivateKey loadPrivateKey() throws NoSuchAlgorithmException, InvalidKeySpecException {
+    private void loadPrivateKey() throws NoSuchAlgorithmException, InvalidKeySpecException {
         if (System.getenv("SF_PRIVATE_KEY") == null) {
             throw new IllegalStateException("Cannot get SF_PRIVATE_KEY !");
         }
@@ -101,10 +81,29 @@ public class SalesforceConfig {
         byte[] decodedKey = java.util.Base64.getDecoder().decode(keyContent);
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decodedKey);
         KeyFactory kf = KeyFactory.getInstance("RSA");
-        return kf.generatePrivate(spec);
+        this.privateKey = kf.generatePrivate(spec);
     }
 
-    private SalesforceCredentials getSalesforceToken(String jwt) throws IOException {
+    private void getSalesforceToken() throws IOException {
+        if (loginUrl == null) {
+            throw new IllegalStateException("No salesforce.loginUrl defined");
+        }
+        if (clientId == null) {
+            throw new IllegalStateException("No salesforce.clientId defined");
+        }
+        if (username == null) {
+            throw new IllegalStateException("No salesforce.username defined");
+        }
+        long salesforceTokenExpiresAt = System.currentTimeMillis() + 3 * 3600 * 1000;
+
+        String jwt = Jwts.builder()
+                .issuer(clientId)
+                .subject(username)
+                .claim("aud", loginUrl)
+                .expiration(new Date(salesforceTokenExpiresAt))
+                .signWith(privateKey)
+                .compact();
+
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
         formData.add("assertion", jwt);
@@ -118,10 +117,10 @@ public class SalesforceConfig {
             log.info("Salesforce access token response: {}", tokenResponse);
         }
 
-        return new SalesforceCredentials(tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl(), null, null, null);
+        this.salesforceCredentials = new SalesforceCredentials(salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl());
     }
 
-    private SalesforceCredentials getDataCloudToken(SalesforceCredentials salesforceCredentials) throws IOException {
+    private void getDataCloudToken() throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:salesforce:grant-type:external:cdp");
         formData.add("subject_token", salesforceCredentials.salesforceAccessToken());
@@ -142,7 +141,7 @@ public class SalesforceConfig {
         }
 
         long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();
-        return new SalesforceCredentials(salesforceCredentials.salesforceAccessToken(), salesforceCredentials.salesforceInstanceUrl(), tokenResponse.getAccessToken(), expiresAt, "https://" + tokenResponse.getInstanceUrl());
+        this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.getAccessToken(), expiresAt, "https://" + tokenResponse.getInstanceUrl());
     }
 
 }
