@@ -3,6 +3,7 @@ package net.pautet.softs.demospring.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import jakarta.annotation.PostConstruct;
+import jakarta.persistence.Entity;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
@@ -10,6 +11,7 @@ import net.pautet.softs.demospring.entity.TokenResponse;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -32,7 +34,7 @@ public class SalesforceConfig {
     private String username;
     private String loginUrl;
 
-    private SalesforceCredentials salesforceCredentials;
+    private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private PrivateKey privateKey;
@@ -62,12 +64,6 @@ public class SalesforceConfig {
     @PostConstruct
     public void createSalesforceConfig() throws NoSuchAlgorithmException, InvalidKeySpecException, IOException {
         loadPrivateKey();
-
-        // Get Salesforce token
-        getSalesforceToken();
-
-        // Exchange for Data Cloud token
-        getDataCloudToken();
     }
 
     private void loadPrivateKey() throws NoSuchAlgorithmException, InvalidKeySpecException {
@@ -109,23 +105,30 @@ public class SalesforceConfig {
         formData.add("assertion", jwt);
         TokenResponse tokenResponse = RestClient.builder().baseUrl(loginUrl)
                 .build().post().uri("/services/oauth2/token").body(formData)
-                .retrieve()
+                .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
+                    // For any other status, throw an exception with the response body as a string
+                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
+                })
                 .body(TokenResponse.class);
         if (tokenResponse == null) {
             throw new IOException("Unexpected null TokenResponse for Salesforce token");
         } else {
             log.info("Salesforce access token response: {}", tokenResponse);
+            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl());
         }
-
-        this.salesforceCredentials = new SalesforceCredentials(salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl());
     }
 
     private void getDataCloudToken() throws IOException {
+        RestClient apiClient = createSalesforceApiClient();
+        if (salesforceCredentials.salesforceAccessToken() == null) {
+            throw new IllegalStateException("No salesforce access token to get data cloud token !");
+        }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:salesforce:grant-type:external:cdp");
         formData.add("subject_token", salesforceCredentials.salesforceAccessToken());
         formData.add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token");
-        TokenResponse tokenResponse = createSalesforceApiClient().post().uri("/services/a360/token")
+        TokenResponse tokenResponse = apiClient.post().uri("/services/a360/token")
                 .body(formData).retrieve()
                 .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
@@ -134,10 +137,8 @@ public class SalesforceConfig {
                 })
                 .body(TokenResponse.class);
 
-        if (tokenResponse == null) {
-            throw new IOException("Unexpected null TokenResponse for Salesforce token");
-        } else {
-            log.info("Data Cloud access token response: {}", tokenResponse);
+        if (tokenResponse == null || tokenResponse.getExpiresIn() == null) {
+            throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
         }
 
         long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();

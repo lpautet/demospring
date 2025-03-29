@@ -27,4 +27,10 @@ public class TokenResponse {
 
     @JsonAlias("id")
     private String id;
+
+    @JsonAlias("error")
+    private String error;
+
+    @JsonAlias("error_description")
+    private String errorDescription;
 }
