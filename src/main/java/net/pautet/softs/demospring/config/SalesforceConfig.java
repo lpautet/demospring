@@ -137,7 +137,7 @@ public class SalesforceConfig {
         MediaType contentType = postResponse.getHeaders().getContentType();
 
         // Handle based on Content-Type
-        if (contentType != null && contentType.equals(MediaType.APPLICATION_JSON)) {
+        if (contentType.includes(MediaType.APPLICATION_JSON)) {
             TokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), TokenResponse.class);
             if (tokenResponse.getAccessToken() == null || tokenResponse.getExpiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
@@ -145,10 +145,10 @@ public class SalesforceConfig {
             log.info("Data Cloud Token: {}", tokenResponse);
             long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();
             this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.getAccessToken(), expiresAt, "https://" + tokenResponse.getInstanceUrl());
-        } else if (contentType != null && contentType.equals(MediaType.TEXT_HTML)) {
+        } else if (contentType.includes(MediaType.TEXT_HTML)) {
             throw new IOException("Unexpected Data Cloud access token response: " + postResponse.getBody());
         } else {
-            throw new IOException("Unexpected Data Cloud access token response: " + "no content-type");
+            throw new IOException("Unexpected Data Cloud access token response, content-type=: " + contentType);
         }
     }
 
