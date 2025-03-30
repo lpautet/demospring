@@ -111,6 +111,9 @@ public class NetatmoService {
     }
 
     private void refreshToken() throws IOException {
+        if (this.currentToken.getRefreshToken() == null) {
+            throw new IllegalStateException("No Netatmo Refresh Token !");
+        }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "refresh_token");
         formData.add("client_id", netatmoConfig.getClientId());

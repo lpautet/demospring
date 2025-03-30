@@ -64,17 +64,17 @@ public class SalesforceService {
         Map<String, Object> payload = new HashMap<>();
         List<Map<String, Object>> data = new ArrayList<>();
         for (Map<String, Object> metric : metrics) {
-            Map<String, Object> record = new HashMap<>();
-            record.put("ModuleName", safeString(metric.get(MODULE_NAME)));
-            record.put("DeviceId", safeString(metric.get(MODULE_ID)));
-            record.put("Timestamp", metric.get(TIMESTAMP));
-            if (metric.containsKey(TEMPERATURE)) record.put(TEMPERATURE, safeNumber(metric.get(TEMPERATURE)));
-            if (metric.containsKey(HUMIDITY)) record.put(HUMIDITY, safeNumber(metric.get(HUMIDITY)));
-            if (metric.containsKey(CO_2)) record.put(CO_2, safeNumber(metric.get(CO_2)));
-            if (metric.containsKey(PRESSURE)) record.put(PRESSURE, safeNumber(metric.get(PRESSURE)));
-            if (metric.containsKey(NOISE)) record.put(NOISE, safeNumber(metric.get(NOISE)));
-            if (metric.containsKey(RAIN)) record.put(RAIN, safeNumber(metric.get(RAIN)));
-            data.add(record);
+            Map<String, Object> readings = new HashMap<>();
+            readings.put("ModuleName", safeString(metric.get(MODULE_NAME)));
+            readings.put("DeviceId", safeString(metric.get(MODULE_ID)));
+            readings.put("Timestamp", metric.get(TIMESTAMP));
+            if (metric.containsKey(TEMPERATURE)) readings.put(TEMPERATURE, safeNumber(metric.get(TEMPERATURE)));
+            if (metric.containsKey(HUMIDITY)) readings.put(HUMIDITY, safeNumber(metric.get(HUMIDITY)));
+            if (metric.containsKey(CO_2)) readings.put(CO_2, safeNumber(metric.get(CO_2)));
+            if (metric.containsKey(PRESSURE)) readings.put(PRESSURE, safeNumber(metric.get(PRESSURE)));
+            if (metric.containsKey(NOISE)) readings.put(NOISE, safeNumber(metric.get(NOISE)));
+            if (metric.containsKey(RAIN)) readings.put(RAIN, safeNumber(metric.get(RAIN)));
+            data.add(readings);
         }
         payload.put("data", data);
 
@@ -82,10 +82,14 @@ public class SalesforceService {
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
                     String errorBody = objectMapper.readValue(response.getBody(), String.class);
-                    throw new IOException("Datacloud query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
+                    throw new IOException("Data Cloud query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(DataCloudIngestResponse.class);
 
-        log.info("Data Cloud ingest response: {}", responseEntity.getBody());
+        if (!responseEntity.getBody().accepted()) {
+            throw new IOException("Data Cloud did not accept ingested data !: " + responseEntity.getBody());
+        }
+
+        log.info("Data Cloud accepted ingest data");
     }
 
     private String safeString(Object value) {
