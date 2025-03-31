@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
+import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -99,7 +100,7 @@ public class SalesforceService {
         return value != null ? value.toString() : null;
     }
 
-    public String getSalesforceUser() throws IOException {
+    public SalesforceUserInfo getSalesforceUser() throws IOException {
         return salesforceConfig.getSalesforceUser();
     }
 }

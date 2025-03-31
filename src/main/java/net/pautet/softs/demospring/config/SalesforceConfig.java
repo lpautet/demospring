@@ -6,6 +6,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
+import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
@@ -98,6 +99,9 @@ public class SalesforceConfig {
         if (sessionTimeout == null) {
             throw new IllegalStateException("No salesforce.sessionTimeout defined");
         }
+        // This is not really the expiration of salesforce token itself, but of the claims.
+        // salesforce token expiration is defined by the session level parameter in
+        // salesforce configuration so it is just user-defined
         long salesforceTokenExpiresAt = System.currentTimeMillis() + sessionTimeout * 1000;
 
         String jwt = Jwts.builder()
@@ -129,18 +133,18 @@ public class SalesforceConfig {
         }
     }
 
-    public String getSalesforceUser() throws IOException {
+    public SalesforceUserInfo getSalesforceUser() throws IOException {
         RestClient apiClient = createSalesforceIdClient();
         if (salesforceCredentials.salesforceUserId() == null) {
             throw new IllegalStateException("No salesforce user id !");
         }
-        ResponseEntity<String> userResponse = apiClient.get().retrieve()
+        ResponseEntity<SalesforceUserInfo> userResponse = apiClient.get().retrieve()
                 .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
                     String errorBody = objectMapper.readValue(response.getBody(), String.class);
                     throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 })
-                .toEntity(String.class);
+                .toEntity(SalesforceUserInfo.class);
 
         System.out.println(userResponse.getBody());
         return userResponse.getBody();

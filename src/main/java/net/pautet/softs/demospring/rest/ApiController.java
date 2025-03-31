@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
+import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.UserRepository;
@@ -163,7 +164,7 @@ public class ApiController {
     }
 
     @GetMapping("/salesforce/whoami")
-    public String getSalesforceUser() throws IOException {
+    public SalesforceUserInfo getSalesforceUser() throws IOException {
         return salesforceService.getSalesforceUser();
     }
 
