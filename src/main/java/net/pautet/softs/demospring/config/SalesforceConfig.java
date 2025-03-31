@@ -7,7 +7,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
 import net.pautet.softs.demospring.entity.TokenResponse;
-import org.antlr.v4.runtime.Token;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -34,6 +33,7 @@ public class SalesforceConfig {
     private String clientId;
     private String username;
     private String loginUrl;
+    private Long sessionTimeout;
 
     private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
 
@@ -56,6 +56,16 @@ public class SalesforceConfig {
             getSalesforceToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceInstanceUrl())
+                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
+                .build();
+    }
+
+    public RestClient createSalesforceIdClient() throws IOException {
+        if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+            log.info("Needs a new Salesforce Token");
+            getSalesforceToken();
+        }
+        return RestClient.builder().baseUrl(salesforceCredentials.salesforceUserId())
                 .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
                 .build();
     }
@@ -85,7 +95,10 @@ public class SalesforceConfig {
         if (username == null) {
             throw new IllegalStateException("No salesforce.username defined");
         }
-        long salesforceTokenExpiresAt = System.currentTimeMillis() + 3 * 3600 * 1000;
+        if (sessionTimeout == null) {
+            throw new IllegalStateException("No salesforce.sessionTimeout defined");
+        }
+        long salesforceTokenExpiresAt = System.currentTimeMillis() + sessionTimeout * 1000;
 
         String jwt = Jwts.builder()
                 .issuer(clientId)
@@ -111,8 +124,26 @@ public class SalesforceConfig {
             throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
         } else {
             log.info("Salesforce access token response: {}", tokenResponse);
-            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getInstanceUrl());
+            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getId(), tokenResponse.getInstanceUrl());
+            getSalesforceUser();
         }
+    }
+
+    public String getSalesforceUser() throws IOException {
+        RestClient apiClient = createSalesforceIdClient();
+        if (salesforceCredentials.salesforceUserId() == null) {
+            throw new IllegalStateException("No salesforce user id !");
+        }
+        ResponseEntity<String> userResponse = apiClient.get().retrieve()
+                .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
+                    // For any other status, throw an exception with the response body as a string
+                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
+                })
+                .toEntity(String.class);
+
+        System.out.println(userResponse.getBody());
+        return userResponse.getBody();
     }
 
     private void getDataCloudToken() throws IOException {
@@ -137,7 +168,7 @@ public class SalesforceConfig {
         MediaType contentType = postResponse.getHeaders().getContentType();
 
         // Handle based on Content-Type
-        if (contentType.includes(MediaType.APPLICATION_JSON)) {
+        if (contentType != null && contentType.includes(MediaType.APPLICATION_JSON)) {
             TokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), TokenResponse.class);
             if (tokenResponse.getAccessToken() == null || tokenResponse.getExpiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
@@ -145,7 +176,9 @@ public class SalesforceConfig {
             log.info("Data Cloud Token: {}", tokenResponse);
             long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();
             this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.getAccessToken(), expiresAt, "https://" + tokenResponse.getInstanceUrl());
-        } else if (contentType.includes(MediaType.TEXT_HTML)) {
+        } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
+            // Salesforce token is likely invalid now
+            this.salesforceCredentials = new SalesforceCredentials();
             throw new IOException("Unexpected Data Cloud access token response: " + postResponse.getBody());
         } else {
             throw new IOException("Unexpected Data Cloud access token response, content-type=: " + contentType);

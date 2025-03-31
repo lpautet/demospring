@@ -26,7 +26,6 @@ public class SalesforceService {
     private final SalesforceConfig salesforceConfig;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-
     public String fetchData() throws IOException {
         Map<String, String> queryParams = Map.of(
                 "q", "SELECT Id,Name FROM Account LIMIT 10"
@@ -98,5 +97,9 @@ public class SalesforceService {
 
     private String safeNumber(Object value) {
         return value != null ? value.toString() : null;
+    }
+
+    public String getSalesforceUser() throws IOException {
+        return salesforceConfig.getSalesforceUser();
     }
 }

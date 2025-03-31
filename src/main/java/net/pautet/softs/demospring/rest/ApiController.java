@@ -162,6 +162,11 @@ public class ApiController {
         return salesforceService.fetchDataCloudData();
     }
 
+    @GetMapping("/salesforce/whoami")
+    public String getSalesforceUser() throws IOException {
+        return salesforceService.getSalesforceUser();
+    }
+
     // New endpoint to start Netatmo authorization
     @GetMapping("/netatmo/authorize")
     public RedirectView authorizeNetatmo() {
