@@ -48,7 +48,7 @@ public class NetatmoService {
             log.info("Needs a new Access Token");
             refreshToken();
         }
-        return RestClient.builder().baseUrl( NETATMO_API_URI + "/api")
+        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
                 .defaultHeader("Authorization", "Bearer " + this.currentToken.getAccessToken())
                 //  .requestInterceptor(new ApiController.RefreshTokenInterceptor(principal))
                 .build();
@@ -74,7 +74,7 @@ public class NetatmoService {
         redisValue = redisTemplate.opsForValue().get("netatmo:expires_at");
         if (redisValue != null) {
             this.currentToken.setExpiresAt(Long.parseLong(redisValue));
-            loaded += " expires: " +  new Date(this.currentToken.getExpiresAt());
+            loaded += " expires: " + new Date(this.currentToken.getExpiresAt());
         }
         if (!loaded.isEmpty()) {
             log.info("Loaded from redis: {}", loaded);
@@ -88,11 +88,12 @@ public class NetatmoService {
         formData.add("client_id", netatmoConfig.getClientId());
         formData.add("client_secret", netatmoConfig.getClientSecret());
         formData.add("code", code);
-        formData.add("redirect_uri",  appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
+        formData.add("redirect_uri", appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
         formData.add("scope", NETATMO_SCOPE);
         ResponseEntity<String> response = RestClient.builder().baseUrl(NETATMO_API_URI).build().post().uri("/oauth2/token").body(formData)
                 .retrieve().toEntity(String.class);
-        TokenResponse tokenResponse = objectMapper.readValue(response.getBody(), TokenResponse.class);        if (tokenResponse == null) {
+        TokenResponse tokenResponse = objectMapper.readValue(response.getBody(), TokenResponse.class);
+        if (tokenResponse == null) {
             throw new IOException("Failed to exchange code for tokens !");
         }
 

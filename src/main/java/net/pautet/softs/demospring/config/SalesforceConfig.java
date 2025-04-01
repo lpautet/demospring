@@ -99,16 +99,16 @@ public class SalesforceConfig {
         if (sessionTimeout == null) {
             throw new IllegalStateException("No salesforce.sessionTimeout defined");
         }
-        // This is not really the expiration of salesforce token itself, but of the claims.
         // salesforce token expiration is defined by the session level parameter in
-        // salesforce configuration so it is just user-defined
+        // salesforce configuration and there is no way to get a true expiration date for the token
+        // usual default is 2 hours
         long salesforceTokenExpiresAt = System.currentTimeMillis() + sessionTimeout * 1000;
 
         String jwt = Jwts.builder()
                 .issuer(clientId)
                 .subject(username)
                 .claim("aud", loginUrl)
-                .expiration(new Date(salesforceTokenExpiresAt))
+                .expiration(new Date(System.currentTimeMillis() + 5 * 60 * 1000)) // 5 mins
                 .signWith(privateKey)
                 .compact();
 
