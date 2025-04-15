@@ -8,7 +8,7 @@ import net.pautet.softs.demospring.entity.AuthResponse;
 import net.pautet.softs.demospring.entity.SignupRequest;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
-import net.pautet.softs.demospring.repository.UserRepository;
+import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +35,7 @@ public class AuthController {
 
     private NetatmoConfig netatmoConfig;
     private JWTUtil jwtUtil;
-    private UserRepository userRepository;
+    private RedisUserService redisUserService;
     private AppConfig appConfig;
     private NetatmoService netatmoService;
 
@@ -68,20 +68,20 @@ public class AuthController {
         formData.add("scope", NETATMO_SCOPE);
         TokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
                 .retrieve().body(TokenResponse.class);
-        User user = userRepository.findByUsername(state);
+        User user = redisUserService.findByUsername(state);
         if (tokenResponse == null) {
             throw new IOException("Unexpected null tokenResponse!");
         }
         user.setAccessToken(tokenResponse.getAccessToken());
         user.setRefreshToken(tokenResponse.getRefreshToken());
         user.setExpiresAt(System.currentTimeMillis() + tokenResponse.getExpiresIn()*1000);
-        userRepository.save(user);
+        redisUserService.save(user);
         return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create("/")).build();
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody SignupRequest signupRequest) {
-        User user = userRepository.findByUsername(signupRequest.getUsername());
+        User user = redisUserService.findByUsername(signupRequest.getUsername());
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
@@ -90,8 +90,8 @@ public class AuthController {
 
     @PostMapping("/signup")
     public ResponseEntity<User> signup(@RequestBody User user) {
-        user.setId(null);
-        userRepository.save(user);
+        user.setUsername(user.getUsername());
+        redisUserService.save(user);
         return ResponseEntity.ok(user);
     }
 }

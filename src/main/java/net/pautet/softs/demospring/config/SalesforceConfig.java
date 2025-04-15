@@ -41,7 +41,26 @@ public class SalesforceConfig {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private PrivateKey privateKey;
 
+    @PostConstruct
+    private void loadPrivateKey() throws NoSuchAlgorithmException, InvalidKeySpecException {
+        if (System.getenv("SF_PRIVATE_KEY") == null) {
+            log.warn("SF_PRIVATE_KEY not found in environment variables. Salesforce Data Cloud integration will be disabled.");
+            return;
+        }
+        String keyContent = System.getenv("SF_PRIVATE_KEY")
+                .replace("-----BEGIN PRIVATE KEY-----", "")
+                .replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+        byte[] decodedKey = java.util.Base64.getDecoder().decode(keyContent);
+        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decodedKey);
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        this.privateKey = kf.generatePrivate(spec);
+    }
+
     public RestClient createDataCloudApiClient() throws IOException {
+        if (privateKey == null) {
+            throw new IllegalStateException("Salesforce Data Cloud integration is disabled. SF_PRIVATE_KEY not configured.");
+        }
         if (this.salesforceCredentials.dataCloudAccessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Data Cloud Access Token");
             getDataCloudToken();
@@ -52,6 +71,9 @@ public class SalesforceConfig {
     }
 
     public RestClient createSalesforceApiClient() throws IOException {
+        if (privateKey == null) {
+            throw new IllegalStateException("Salesforce integration is disabled. SF_PRIVATE_KEY not configured.");
+        }
         if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Salesforce Access Token");
             getSalesforceToken();
@@ -62,6 +84,9 @@ public class SalesforceConfig {
     }
 
     public RestClient createSalesforceIdClient() throws IOException {
+        if (privateKey == null) {
+            throw new IllegalStateException("Salesforce integration is disabled. SF_PRIVATE_KEY not configured.");
+        }
         if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Salesforce Token");
             getSalesforceToken();
@@ -69,21 +94,6 @@ public class SalesforceConfig {
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceUserId())
                 .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
                 .build();
-    }
-
-    @PostConstruct
-    private void loadPrivateKey() throws NoSuchAlgorithmException, InvalidKeySpecException {
-        if (System.getenv("SF_PRIVATE_KEY") == null) {
-            throw new IllegalStateException("Cannot get SF_PRIVATE_KEY !");
-        }
-        String keyContent = System.getenv("SF_PRIVATE_KEY")
-                .replace("-----BEGIN PRIVATE KEY-----", "")
-                .replace("-----END PRIVATE KEY-----", "")
-                .replaceAll("\\s", "");
-        byte[] decodedKey = java.util.Base64.getDecoder().decode(keyContent);
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decodedKey);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        this.privateKey = kf.generatePrivate(spec);
     }
 
     private void getSalesforceToken() throws IOException {

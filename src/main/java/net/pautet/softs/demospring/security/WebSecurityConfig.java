@@ -1,7 +1,7 @@
 package net.pautet.softs.demospring.security;
 
 import lombok.AllArgsConstructor;
-import net.pautet.softs.demospring.repository.UserRepository;
+import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.CustomUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,13 +18,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class WebSecurityConfig {
 
     CustomUserDetailsService userDetailsService;
-    UserRepository userRepository;
+    RedisUserService redisUserService;
     private JWTUtil jwtUtil;
     private AuthEntryPointJwt unauthorizedHandler;
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
-        return new AuthTokenFilter(jwtUtil, userDetailsService, userRepository);
+        return new AuthTokenFilter(jwtUtil, userDetailsService, redisUserService);
     }
 
     @Bean

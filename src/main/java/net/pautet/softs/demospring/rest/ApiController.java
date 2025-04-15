@@ -7,7 +7,7 @@ import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
-import net.pautet.softs.demospring.repository.UserRepository;
+import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
 import org.springframework.http.HttpRequest;
@@ -47,7 +47,7 @@ public class ApiController {
     public static final String NETATMO_CALLBACK_ENDPOINT = "/api" + "/netatmo/callback";
 
     private NetatmoConfig netatmoConfig;
-    private UserRepository userService;
+    private RedisUserService redisUserService;
     private NetatmoService netatmoService;
     private SalesforceService salesforceService;
     private AppConfig appConfig;
@@ -62,42 +62,69 @@ public class ApiController {
 
         @Override
         public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, ClientHttpRequestExecution execution) throws IOException {
-            ClientHttpResponse response = execution.execute(request, body);
-            // handle 403 FORBIDDEN (Access token expired if error.code == 3)
-            if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
-                log.info("Got FORBIDDEN status, refreshing token...");
-                request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + refreshToken(user)));
-                return execution.execute(request, body);
+            try {
+                ClientHttpResponse response = execution.execute(request, body);
+                // handle 403 FORBIDDEN (Access token expired if error.code == 3)
+                if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
+                    log.info("Got FORBIDDEN status, refreshing token...");
+                    String responseBody = new String(response.getBody().readAllBytes());
+                    log.debug("Response body: {}", responseBody);
+                    String newToken = refreshToken(user);
+                    if (newToken == null) {
+                        throw new IOException("Failed to refresh token - received null token");
+                    }
+                    request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
+                    return execution.execute(request, body);
+                }
+                return response;
+            } catch (Exception e) {
+                log.error("Error in RefreshTokenInterceptor: {}", e.getMessage(), e);
+                throw new IOException("Failed to refresh token: " + e.getMessage(), e);
             }
-            return response;
         }
 
-        private User refreshToken(User user) throws IOException {
-            MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
-            formData.add("grant_type", "refresh_token");
-            formData.add("client_id", netatmoConfig.getClientId());
-            formData.add("client_secret", netatmoConfig.getClientSecret());
-            formData.add("refresh_token", user.getRefreshToken());
-            TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
-                    .build().post().uri("/oauth2/token").body(formData)
-                    .retrieve()
-                    .body(TokenResponse.class);
-            log.info("Token refreshed!");
-            if (tokenResponse == null) {
-                throw new IOException("Unexpected null tokenResponse!");
+        private String refreshToken(User user) throws IOException {
+            try {
+                MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+                formData.add("grant_type", "refresh_token");
+                formData.add("client_id", netatmoConfig.getClientId());
+                formData.add("client_secret", netatmoConfig.getClientSecret());
+                formData.add("refresh_token", user.getRefreshToken());
+                TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
+                        .build().post().uri("/oauth2/token").body(formData)
+                        .retrieve()
+                        .body(TokenResponse.class);
+                log.info("Token refreshed!");
+                if (tokenResponse == null) {
+                    throw new IOException("Unexpected null tokenResponse!");
+                }
+                user.setAccessToken(tokenResponse.getAccessToken());
+                user.setRefreshToken(tokenResponse.getRefreshToken());
+                redisUserService.save(user);
+                return tokenResponse.getAccessToken();
+            } catch (Exception e) {
+                log.error("Error refreshing token: {}", e.getMessage(), e);
+                throw new IOException("Failed to refresh token", e);
             }
-            user.setAccessToken(tokenResponse.getAccessToken());
-            user.setRefreshToken(tokenResponse.getRefreshToken());
-            return userService.save(user);
         }
     }
 
     private RestClient createApiWebClient(Principal principal) {
-        User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
-                .defaultHeader("Authorization", "Bearer " + user.getAccessToken())
-                .requestInterceptor(new RefreshTokenInterceptor(principal))
-                .build();
+        try {
+            User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
+            if (user == null || user.getAccessToken() == null) {
+                log.error("User or access token is null. User: {}, AccessToken: {}", user, user != null ? user.getAccessToken() : null);
+                throw new IllegalStateException("User or access token is null");
+            }
+            log.debug("Creating API web client with access token: {}", user.getAccessToken());
+            return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
+                    .defaultHeader("Authorization", "Bearer " + user.getAccessToken())
+                    .requestInterceptor(new RefreshTokenInterceptor(principal))
+                    .build();
+        } catch (Exception e) {
+            log.error("Error creating API web client: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create API web client: " + e.getMessage(), e);
+        }
     }
 
     @GetMapping("/whoami")
@@ -137,15 +164,32 @@ public class ApiController {
                                              @RequestParam("module_id") String moduleId,
                                              @RequestParam("scale") String scale,
                                              @RequestParam("type") String[] types) {
-        String ret = createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
-                        .queryParam("device_id", deviceId)
-                        .queryParam("module_id", moduleId)
-                        .queryParam("scale", scale)
-                        .queryParam("type", Arrays.asList(types))
-                        .queryParam("date_begin", (System.currentTimeMillis() / 1000) - 24 * 3600)
-                        .build())
-                .retrieve().body(String.class);
-        return ResponseEntity.ok(ret);
+        try {
+            String ret = createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
+                            .queryParam("device_id", deviceId)
+                            .queryParam("module_id", moduleId)
+                            .queryParam("scale", scale)
+                            .queryParam("type",String.join(",", types))
+                            .queryParam("date_begin", (System.currentTimeMillis() / 1000) - 24 * 3600)
+                            .build())
+                    .retrieve()
+                    .onStatus(HttpStatus.FORBIDDEN::equals, (request, response) -> {
+                        String body = new String(response.getBody().readAllBytes());
+                        log.error("/getmeasure: FORBIDDEN: {}", body);
+                        throw new IOException("getMeasure: FORBIDDEN " + body);
+                    })
+                    .onStatus(HttpStatus.SERVICE_UNAVAILABLE::equals, (request, response) -> {
+                        String body = new String(response.getBody().readAllBytes());
+                        log.error("/getmeasure: SERVICE_UNAVAILABLE: {}", body);
+                        throw new IOException("getMeasure: SERVICE_UNAVAILABLE " + body);
+                    })
+                    .body(String.class);
+            return ResponseEntity.ok(ret);
+        } catch (Exception e) {
+            log.error("Error in getMeasure: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"error\":{\"code\":500,\"message\":\"" + e.getMessage() + "\"}}");
+        }
     }
 
     @GetMapping("/env")

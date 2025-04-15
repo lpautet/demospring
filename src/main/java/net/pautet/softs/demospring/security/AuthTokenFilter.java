@@ -7,7 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.User;
-import net.pautet.softs.demospring.repository.UserRepository;
+import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.CustomUserDetailsService;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,7 +26,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
     private JWTUtil jwtUtil;
     private CustomUserDetailsService userDetailsService;
-    private UserRepository userRepository;
+    private RedisUserService redisUserService;
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain) throws ServletException, IOException {
@@ -35,7 +35,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
             if (jwt != null) {
                 String username = jwtUtil.extractUsername(jwt);
                 if (jwtUtil.validateToken(jwt, username)) {
-                    User user = userRepository.findByUsername(username);
+                    User user = redisUserService.findByUsername(username);
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(user, null, userDetails.getAuthorities());

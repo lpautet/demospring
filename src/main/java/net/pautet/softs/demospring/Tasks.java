@@ -21,6 +21,12 @@ public class Tasks {
     @Scheduled(fixedRate = 600000)
     public void scheduleNetatmoToDataCloud() {
         try {
+            // Check if Salesforce configuration is available
+            if (System.getenv("SF_PRIVATE_KEY") == null) {
+                log.info("Salesforce configuration not available, skipping data push to Data Cloud");
+                return;
+            }
+
             log.info("Starting scheduled Netatmo data fetch and push at {}", new java.util.Date());
             List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
             salesforceService.pushToDataCloud(metrics);
