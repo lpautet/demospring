@@ -7,12 +7,14 @@ import {
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
+    BarController,
     Title,
     Tooltip,
     Legend,
     TimeScale
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
 ChartJS.register(
@@ -20,6 +22,8 @@ ChartJS.register(
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
+    BarController,
     Title,
     Tooltip,
     Legend,
@@ -123,13 +127,13 @@ const MeasurementCard = ({ title, data, measures, time }) => {
     }
 
     if (measures?.some(m => m.sp_temperature !== undefined)) {
-        options.scales.sp_temperature = {
+        options.scales.temperature = {
             type: 'linear',
             display: true,
-            position: 'right',
+            position: 'left',
             title: {
                 display: true,
-                text: 'Setpoint (°C)'
+                text: 'Temperature (°C)'
             },
             grid: {
                 drawOnChartArea: false
@@ -242,7 +246,7 @@ const MeasurementCard = ({ title, data, measures, time }) => {
             data: measures?.map(m => m.sp_temperature) || [],
             borderColor: 'rgb(153, 102, 255)',
             backgroundColor: 'rgba(153, 102, 255, 0.5)',
-            yAxisID: 'sp_temperature',
+            yAxisID: 'temperature',
             pointRadius: 0,
             borderWidth: 2
         });
@@ -252,11 +256,13 @@ const MeasurementCard = ({ title, data, measures, time }) => {
         chartData.datasets.push({
             label: 'Boiler On',
             data: measures?.map(m => m.sum_boiler_on) || [],
-            borderColor: 'rgb(201, 203, 207)',
-            backgroundColor: 'rgba(201, 203, 207, 0.5)',
+            borderColor: 'rgb(255, 140, 0)',  // Dark orange for border
+            backgroundColor: 'rgba(255, 69, 0, 0.5)',  // Orange-red for bars
             yAxisID: 'sum_boiler_on',
-            pointRadius: 0,
-            borderWidth: 2
+            type: 'bar',  // Specify this dataset as bars
+            barPercentage: 0.8,  // Make bars slightly thinner
+            categoryPercentage: 0.8,  // Make bars slightly thinner
+            borderWidth: 1
         });
     }
 
@@ -279,8 +285,10 @@ const MeasurementCard = ({ title, data, measures, time }) => {
             borderColor: 'rgb(153, 102, 255)',
             backgroundColor: 'rgba(153, 102, 255, 0.5)',
             yAxisID: 'sum_rain',
-            pointRadius: 0,
-            borderWidth: 2
+            type: 'bar',
+            barPercentage: 0.8,
+            categoryPercentage: 0.8,
+            borderWidth: 1
         });
     }
 
