@@ -43,7 +43,11 @@ public class JWTUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parser().setSigningKey(key).build().parseClaimsJws(token).getBody();
+        try {
+            return Jwts.parser().setSigningKey(key).build().parseClaimsJws(token).getBody();
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            throw new JwtExpiredException("JWT token has expired");
+        }
     }
 
     private Boolean isTokenExpired(String token) {

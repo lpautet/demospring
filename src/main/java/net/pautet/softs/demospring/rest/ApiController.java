@@ -1,12 +1,15 @@
 package net.pautet.softs.demospring.rest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
+import net.pautet.softs.demospring.entity.NetatmoErrorResponse;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
+import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
@@ -26,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.view.RedirectView;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -66,15 +70,26 @@ public class ApiController {
                 ClientHttpResponse response = execution.execute(request, body);
                 // handle 403 FORBIDDEN (Access token expired if error.code == 3)
                 if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
-                    log.info("Got FORBIDDEN status, refreshing token...");
                     String responseBody = new String(response.getBody().readAllBytes());
-                    log.debug("Response body: {}", responseBody);
-                    String newToken = refreshToken(user);
-                    if (newToken == null) {
-                        throw new IOException("Failed to refresh token - received null token");
+
+                    // Try to parse the error response
+                    ObjectMapper mapper = new ObjectMapper();
+                    NetatmoErrorResponse error;
+                    try {
+                        error = mapper.readValue(responseBody, NetatmoErrorResponse.class);
+                    } catch (Exception e) {
+                        throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
                     }
-                    request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
-                    return execution.execute(request, body);
+                    if (error.getError().getCode() == 3) {  // Access token expired
+                        String newToken = refreshToken(user);
+                        if (newToken == null) {
+                            throw new IOException("Failed to refresh token - received null token");
+                        }
+                        request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
+                        return execution.execute(request, body);
+                    } else {
+                        throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
+                    }
                 }
                 return response;
             } catch (Exception e) {
@@ -94,7 +109,7 @@ public class ApiController {
                         .build().post().uri("/oauth2/token").body(formData)
                         .retrieve()
                         .body(TokenResponse.class);
-                log.info("Token refreshed!");
+                log.info("Netatmo Token refreshed!");
                 if (tokenResponse == null) {
                     throw new IOException("Unexpected null tokenResponse!");
                 }
@@ -133,63 +148,38 @@ public class ApiController {
         return ResponseEntity.ok(user);
     }
 
+    @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) {
         return createApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
     }
 
+    @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
-    public ResponseEntity<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
-        String ret = createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
-                        .queryParam("home_id", homeId).build())
-                .retrieve()
-                .onStatus(HttpStatus.FORBIDDEN::equals, (request, response) -> {
-                    String body = new String(response.getBody().readAllBytes());
-                    log.error("/homestatus: FORBIDDEN: {}", body);
-                    throw new IOException("getHomeStatus: FORBIDDEN " + body);
-                })
-                .onStatus(HttpStatus.SERVICE_UNAVAILABLE::equals, (request, response) -> {
-                    String body = new String(response.getBody().readAllBytes());
-                    log.error("/homestatus: SERVICE_UNAVAILABLE: {}", body);
-                    throw new IOException("getHomeStatus: SERVICE_UNAVAILABLE " + body);
-                })
-                .body(String.class);
-        return ResponseEntity.ok(ret);
+    public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+        return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
+                        .queryParam("home_id", homeId)
+                        .build())
+                .retrieve().body(String.class);
     }
 
+    @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + {#types}", unless = "#result == null")
     @GetMapping("/getmeasure")
-    public ResponseEntity<String> getMeasure(Principal principal,
-                                             @RequestParam("device_id") String deviceId,
-                                             @RequestParam("module_id") String moduleId,
-                                             @RequestParam("scale") String scale,
-                                             @RequestParam("type") String[] types) {
-        try {
-            String ret = createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
-                            .queryParam("device_id", deviceId)
-                            .queryParam("module_id", moduleId)
-                            .queryParam("scale", scale)
-                            .queryParam("type",String.join(",", types))
-                            .queryParam("date_begin", (System.currentTimeMillis() / 1000) - 24 * 3600)
-                            .build())
-                    .retrieve()
-                    .onStatus(HttpStatus.FORBIDDEN::equals, (request, response) -> {
-                        String body = new String(response.getBody().readAllBytes());
-                        log.error("/getmeasure: FORBIDDEN: {}", body);
-                        throw new IOException("getMeasure: FORBIDDEN " + body);
-                    })
-                    .onStatus(HttpStatus.SERVICE_UNAVAILABLE::equals, (request, response) -> {
-                        String body = new String(response.getBody().readAllBytes());
-                        log.error("/getmeasure: SERVICE_UNAVAILABLE: {}", body);
-                        throw new IOException("getMeasure: SERVICE_UNAVAILABLE " + body);
-                    })
-                    .body(String.class);
-            return ResponseEntity.ok(ret);
-        } catch (Exception e) {
-            log.error("Error in getMeasure: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("{\"error\":{\"code\":500,\"message\":\"" + e.getMessage() + "\"}}");
-        }
+    public String getMeasure(Principal principal,
+                           @RequestParam("device_id") String deviceId,
+                           @RequestParam("module_id") String moduleId,
+                           @RequestParam("scale") String scale,
+                           @RequestParam("type") String[] types) {
+        return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
+                        .queryParam("device_id", deviceId)
+                        .queryParam("module_id", moduleId)
+                        .queryParam("scale", scale)
+                        .queryParam("type",String.join(",", types))
+                        .queryParam("date_begin", (System.currentTimeMillis() / 1000) - 24 * 3600)
+                        .build())
+                .retrieve()
+                .body(String.class);
     }
 
     @GetMapping("/env")

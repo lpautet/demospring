@@ -31,7 +31,7 @@ ChartJS.register(
 );
 
 const MeasurementCard = ({ title, data, measures, time }) => {
-    console.log("MeasurementCard", title, data, measures, time);
+    //console.log("MeasurementCard", title, data, measures, time);
     if (!measures) {
         return;
     }
@@ -58,8 +58,7 @@ const MeasurementCard = ({ title, data, measures, time }) => {
                     }
                 },
                 title: {
-                    display: true,
-                    text: 'Time'
+                    display: false
                 }
             }
         }
@@ -163,7 +162,7 @@ const MeasurementCard = ({ title, data, measures, time }) => {
             position: 'right',
             title: {
                 display: true,
-                text: 'Rain (mm/h)'
+                text: 'Rain (mm)'
             },
             grid: {
                 drawOnChartArea: false
@@ -172,7 +171,7 @@ const MeasurementCard = ({ title, data, measures, time }) => {
     }
 
     if (measures?.some(m => m.sum_rain !== undefined)) {
-        options.scales.sum_rain = {
+        options.scales.rain = {
             type: 'linear',
             display: true,
             position: 'right',
@@ -268,10 +267,10 @@ const MeasurementCard = ({ title, data, measures, time }) => {
 
     if (measures?.some(m => m.rain !== undefined)) {
         chartData.datasets.push({
-            label: 'Rain Rate',
+            label: 'Rain',
             data: measures?.map(m => m.rain) || [],
-            borderColor: 'rgb(54, 162, 235)',
-            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.5)',
             yAxisID: 'rain',
             pointRadius: 0,
             borderWidth: 2
@@ -284,7 +283,7 @@ const MeasurementCard = ({ title, data, measures, time }) => {
             data: measures?.map(m => m.sum_rain) || [],
             borderColor: 'rgb(153, 102, 255)',
             backgroundColor: 'rgba(153, 102, 255, 0.5)',
-            yAxisID: 'sum_rain',
+            yAxisID: 'rain',  // Use the same axis as rain
             type: 'bar',
             barPercentage: 0.8,
             categoryPercentage: 0.8,
@@ -385,8 +384,7 @@ const TemperatureComparisonCard = ({ modules }) => {
                     }
                 },
                 title: {
-                    display: true,
-                    text: 'Time'
+                    display: false
                 }
             },
             temperature: {
@@ -491,35 +489,41 @@ function App() {
             console.log("Module not available:", module);
             return;
         }
-        //console.dir(module);
+        //console.log(`Fetching measures for module ${module.id} (${module.type}) with types:`, types);
         const params = new URLSearchParams()
         params.append('device_id', module.bridge || module.id);
         params.append('module_id', module.id);
         params.append('scale', '30min');
         params.append('type',types);
-        //console.log(params);
         let response = await fetch("/api/getmeasure?" + params, {
             method: "GET",
             headers: {
                 "Authorization": "Bearer " + sessionStorage.getItem("token")
             }
         });
+        
+        if (response.status === 403) {
+            const errorData = await response.json();
+            setMsg(`Netatmo API Error (${errorData.code}): ${errorData.message}`);
+            return;
+        }
+        
         if (response.status !== 200) {
             setMsg("getMeasure: " + response.status + " " + response.statusText);
             console.log("getMeasure status code: " + response.status);
             return;
         }
+        
         const data = await response.json();
-        console.log("getMeasure response:", module.type, data);
+        //console.log(`Received measures for module ${module.id}:`, data);
         
         if (!data || !data.body || !Array.isArray(data.body)) {
-            console.error("Invalid response format:", data);
+            console.error("Invalid response format for module", module.id, ":", data);
             return;
         }
 
         // The response body is an array of measurements
         module.measures = data.body.flatMap(measurement => {
-            //console.log("Processing measurement:", measurement);
             const begTime = measurement.beg_time;
             const stepTime = measurement.step_time;
             const values = measurement.value;
@@ -532,7 +536,6 @@ function App() {
                 // Map the values based on the requested types
                 types.forEach((type, typeIndex) => {
                     const measurementValue = value[typeIndex];
-                    //console.log(`Mapping ${type} to value:`, measurementValue);
                     switch(type) {
                         case 'temperature':
                             measurements.temperature = measurementValue;
@@ -564,22 +567,23 @@ function App() {
                     }
                 });
 
-                const result = {
+                return {
                     timestamp: timestamp,
                     ...measurements
                 };
-                //console.log("Created measurement object:", result);
-                return result;
             });
         });
-        //console.log("Processed measures:", module.type, types, data.body, module.measures);
+
+        //console.log(`Processed ${module.measures.length} measures for module ${module.id}`);
     }
 
     async function updateStatus(homeId) {
-        console.log("updateStatus {}", homeId);
+        //console.log("updateStatus {}", homeId);
         if (!homeId) {
             return;
         }
+        const startTime = performance.now();
+        
         let response = await fetch("/api/homestatus?home_id=" + homeId, {
             method: "GET",
             headers: {
@@ -593,40 +597,100 @@ function App() {
             return;
         }
         let homeStatus = await response.json();
+        //console.log("Received home status:", homeStatus);
+        
+        if (!homeStatus.body || !homeStatus.body.home || !homeStatus.body.home.modules) {
+            console.error("Invalid home status structure:", homeStatus);
+            return;
+        }
+        
+        if (homeStatus.body.home.modules.length < 7) {
+            console.warn("Unexpected module count, available modules:", homeStatus.body.home.modules.map(m => `${m.id} (${m.type})`).join(', '));
+        }
         setHomeStatus(homeStatus.body.home);
-        setMsg("");
-        //console.dir(homeStatus.body);
-        const promises = homeStatus.body.home.modules.map(async module => {
-            if (module.type === 'NAMain') {
-                await getMeasures(module, ['temperature', 'humidity', 'co2', 'noise']);
-                setMainStation(module);
-            } else if (module.type === 'NATherm1') {
-                await getMeasures(module, ['temperature', 'sum_boiler_on', 'sp_temperature']);
-                setTherm(module);
-            } else if (module.type === 'NAModule3') {
-                await getMeasures(module, ['rain', 'sum_rain']);
-                setRainModule(module);
-            }
-            if (module.id === '02:00:00:a9:a2:14') {                
-                await getMeasures(module, ['temperature', 'humidity']);
-                console.dir(module)
-                setOutdoorModule(module);
-            } else if (module.id === '03:00:00:0e:f9:6c') {
-                await getMeasures(module, ['temperature', 'humidity', 'co2']);
-                setPoolHouseModule(module);
-            } else if (module.id === '03:00:00:0e:f9:3a') {
-                await getMeasures(module, ['temperature', 'humidity', 'co2']);
-                setHomeOfficeModule(module);
-            } else if (module.id === '03:00:00:0e:eb:16') {
-                await getMeasures(module, ['temperature', 'humidity', 'co2']);
-                setBedroomModule(module);
+        
+        // Create a map to track module updates
+        const moduleUpdates = new Map();
+        
+        // First, collect all the promises for module updates
+        const updatePromises = homeStatus.body.home.modules.map(async module => {
+            try {
+                //console.log(`Processing module ${module.id} (${module.type})`);
+                if (module.type === 'NAMain') {
+                    await getMeasures(module, ['temperature', 'humidity', 'co2', 'noise']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('mainStation', module);
+                    } else {
+                        console.warn(`No measures received for main station ${module.id}`);
+                    }
+                } else if (module.type === 'NATherm1') {
+                    await getMeasures(module, ['temperature', 'sum_boiler_on', 'sp_temperature']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('therm', module);
+                    } else {
+                        console.warn(`No measures received for therm ${module.id}`);
+                    }
+                } else if (module.type === 'NAModule3') {
+                    await getMeasures(module, ['rain', 'sum_rain']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('rainModule', module);
+                    } else {
+                        console.warn(`No measures received for rain module ${module.id}`);
+                    }
+                }
+                if (module.id === '02:00:00:a9:a2:14') {                
+                    await getMeasures(module, ['temperature', 'humidity']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('outdoorModule', module);
+                    } else {
+                        console.warn(`No measures received for outdoor module ${module.id}`);
+                    }
+                } else if (module.id === '03:00:00:0e:f9:6c') {
+                    await getMeasures(module, ['temperature', 'humidity', 'co2']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('poolHouseModule', module);
+                    } else {
+                        console.warn(`No measures received for pool house module ${module.id}`);
+                    }
+                } else if (module.id === '03:00:00:0e:f9:3a') {
+                    await getMeasures(module, ['temperature', 'humidity', 'co2']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('homeOfficeModule', module);
+                    } else {
+                        console.warn(`No measures received for home office module ${module.id}`);
+                    }
+                } else if (module.id === '03:00:00:0e:eb:16') {
+                    await getMeasures(module, ['temperature', 'humidity', 'co2']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('bedroomModule', module);
+                    } else {
+                        console.warn(`No measures received for bedroom module ${module.id}`);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error updating module ${module.id}:`, error);
             }
         });
-        await Promise.all(promises);
-        console.log("updateStatus {}", homeId, " done");
+
+        // Wait for all module updates to complete
+        await Promise.all(updatePromises);
+
+        //console.log("Module updates completed. Updating state with:", moduleUpdates);
+
+        // Update state only after all modules are processed
+        if (moduleUpdates.has('outdoorModule')) setOutdoorModule(moduleUpdates.get('outdoorModule'));
+        if (moduleUpdates.has('poolHouseModule')) setPoolHouseModule(moduleUpdates.get('poolHouseModule'));
+        if (moduleUpdates.has('homeOfficeModule')) setHomeOfficeModule(moduleUpdates.get('homeOfficeModule'));
+        if (moduleUpdates.has('bedroomModule')) setBedroomModule(moduleUpdates.get('bedroomModule'));
+        if (moduleUpdates.has('rainModule')) setRainModule(moduleUpdates.get('rainModule'));
+        if (moduleUpdates.has('mainStation')) setMainStation(moduleUpdates.get('mainStation'));
+        if (moduleUpdates.has('therm')) setTherm(moduleUpdates.get('therm'));
+
+        const endTime = performance.now();
+        const duration = (endTime - startTime) / 1000; // Convert to seconds
+        console.log(`updateStatus ${homeId} done in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`);
     }
-
-
+    
     useEffect(() => {
         const interval = setInterval(async () => {
             setTime(new Date());
@@ -640,68 +704,95 @@ function App() {
         return () => clearInterval(interval);
     }, [homesData]);
 
+    async function handleToken(tokenId) {
+        const authRequest = {
+            username: tokenId,
+        };
+        let response = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "Application/JSON",
+            },
+            body: JSON.stringify(authRequest),
+        });
+        let responseJson;
+        if (response.status === 200) {
+            console.log("logged in");
+            responseJson = await response.json();
+        } else if (response.status === 404) {
+            console.log("Token not found on server!")
+            responseJson = await signup(tokenId);
+        } else {
+            console.log("Unexpected response status for /auth/login");
+            console.dir(response);
+            return null;
+        }
+
+        if (!responseJson || !responseJson.token) {
+            console.log("No token received from server");
+            return null;
+        }
+
+        // Set the token in sessionStorage
+        sessionStorage.setItem("token", responseJson.token);
+        return responseJson.token;
+    }
+
+    // Add JWT token refresh every 6 hours
+    useEffect(() => {
+        const refreshToken = async () => {
+            const tokenId = localStorage.getItem("tokenId");
+            if (tokenId) {
+                try {
+                    const token = await handleToken(tokenId);
+                    if (token) {
+                        console.log("JWT token refreshed successfully");
+                    }
+                } catch (error) {
+                    console.error("Error refreshing JWT token:", error);
+                }
+            }
+        };
+
+        // Set up interval for every 6 hours
+        const tokenRefreshInterval = setInterval(refreshToken, 6 * 60 * 60 * 1000);
+
+        return () => clearInterval(tokenRefreshInterval);
+    }, []);
+
     useEffect(async () => {
             let tokenId = localStorage.getItem("tokenId");
             if (tokenId) {
                 console.log("I have a tokenId");
-                const authRequest = {
-                    username: tokenId,
-                };
-                let response = await fetch("/api/auth/login", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "Application/JSON",
-                    },
-                    body: JSON.stringify(authRequest),
-                });
-                let responseJson;
-                if (response.status === 200) {
-                    console.log("logged in");
-                    responseJson = await response.json();
-                } else if (response.status === 404) {
-                    console.log("Token not found on server!")
-                    responseJson = await signup(tokenId);
-                } else {
-                    console.log("Unexpected response status for /auth/login");
-                    console.dir(response);
-                    return;
-                }
+                const token = await handleToken(tokenId);
+                if (token) {
+                    try {
+                        const whoamiResponse = await fetch("/api/whoami", {
+                            method: "GET",
+                            headers: {
+                                "Authorization": "Bearer " + token
+                            }
+                        });
+                        const whoamiData = await whoamiResponse.json();
+                        console.dir(whoamiData);
 
-                if (!responseJson || !responseJson.token) {
-                    console.log("No token received from server");
-                    return;
-                }
+                        const homesDataResponse = await fetch("/api/homesdata", {
+                            method: "GET",
+                            headers: {
+                                "Authorization": "Bearer " + token
+                            }
+                        });
+                        const homesData = await homesDataResponse.json();
 
-                // Set the token in sessionStorage
-                sessionStorage.setItem("token", responseJson.token);
-                const token = responseJson.token;
-
-                try {
-                    responseJson = await (await fetch("/api/whoami", {
-                        method: "GET",
-                        headers: {
-                            "Authorization": "Bearer " + token
-                        }
-                    })).json();
-
-                    console.dir(responseJson);
-
-                    response = await fetch("/api/homesdata", {
-                        method: "GET",
-                        headers: {
-                            "Authorization": "Bearer " + token
-                        }
-                    });
-                    let homesData = await response.json();
-
-                    console.dir(homesData.body.homes[0]);
-                    setHomesData(homesData.body.homes[0]);
-                    setMsg("");
-                    let homeId = homesData.body.homes[0].id;
-                    await updateStatus(homeId);
-                } catch (error) {
-                    console.error("Error fetching data:", error);
-                    setMsg("Error fetching data: " + error.message);
+                        console.dir(homesData.body.homes[0]);
+                        setHomesData(homesData.body.homes[0]);
+                        setMsg("");
+                        let homeId = homesData.body.homes[0].id;
+                        await updateStatus(homeId);
+                    } catch (error) {
+                        console.error("Error fetching data:", error);
+                        setMsg("Error fetching data: " + error.message);
+                    }
                 }
             }
             if (!tokenId) {
@@ -732,18 +823,31 @@ function App() {
                     measures={outdoorModule.measures}
                     time={getRelativeTime(new Date(outdoorModule.ts * 1000))}
                 />
-                <MeasurementCard 
-                    title="Living Room"
-                    data={mainStation}
-                    measures={mainStation.measures}
-                    time={getRelativeTime(new Date(mainStation.ts * 1000))}
-                />
-                <MeasurementCard 
+                  <MeasurementCard 
                     title="Rain"
                     data={rainModule}
                     measures={rainModule.measures}
                     time={getRelativeTime(new Date(rainModule.ts * 1000))}
                 />
+                <MeasurementCard 
+                    title="Living Room"
+                    data={mainStation}
+                    measures={mainStation.measures}
+                    time={getRelativeTime(new Date(mainStation.ts * 1000))}
+                />  
+                      <MeasurementCard 
+                    title="Pellets"
+                    data={{
+                        ...therm,
+                        therm_measured_temperature: homeStatus.rooms ? homeStatus.rooms[0].therm_measured_temperature : undefined,
+                        therm_setpoint_temperature: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature : undefined,
+                        boiler_status: therm.boiler_status,
+                        boiler_valve_comfort_boost: therm.boiler_valve_comfort_boost,
+                        therm_setpoint_mode: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : undefined
+                    }}
+                    measures={therm.measures}
+                    time=""
+                />            
                 <MeasurementCard 
                     title="Pool House"
                     data={poolHouseModule}
@@ -756,32 +860,19 @@ function App() {
                     measures={homeOfficeModule.measures}
                     time={getRelativeTime(new Date(homeOfficeModule.ts * 1000))}
                 />
+            
                 <MeasurementCard 
                     title="Bedroom"
                     data={bedroomModule}
                     measures={bedroomModule.measures}
                     time={getRelativeTime(new Date(bedroomModule.ts * 1000))}
-                />
-                <MeasurementCard 
-                    title="Pellets"
-                    data={{
-                        ...therm,
-                        therm_measured_temperature: homeStatus.rooms ? homeStatus.rooms[0].therm_measured_temperature : undefined,
-                        therm_setpoint_temperature: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature : undefined,
-                        boiler_status: therm.boiler_status,
-                        boiler_valve_comfort_boost: therm.boiler_valve_comfort_boost,
-                        therm_setpoint_mode: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : undefined
-                    }}
-                    measures={therm.measures}
-                    time=""
-                />
-                <div className={"card"}>
+                />     
+                    <div className={"card"}>
                     <p>Time</p>
                     <p>{time.toISOString()}</p>
-                </div>
-                <div className={"card"}>
                     <p>Message: {msg}</p>
-                </div>
+                </div>                     
+            
             </div>
         </div>
     );
