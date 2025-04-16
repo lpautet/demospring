@@ -1,6 +1,6 @@
 import logo from './logo.svg';
 import './App.css';
-import {useEffect, useState} from "react";
+import {useEffect, useState, useCallback} from "react";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -14,7 +14,7 @@ import {
     Legend,
     TimeScale
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import {Line, Bar} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
 ChartJS.register(
@@ -30,13 +30,10 @@ ChartJS.register(
     TimeScale
 );
 
-const MeasurementCard = ({ title, data, measures, time }) => {
-    //console.log("MeasurementCard", title, data, measures, time);
+const MeasurementCard = ({title, data, measures, time}) => {
     if (!measures) {
         return;
     }
-    //console.dir(data)
-    //console.log(data.measures);
     const options = {
         responsive: true,
         maintainAspectRatio: false,
@@ -294,23 +291,26 @@ const MeasurementCard = ({ title, data, measures, time }) => {
     return (
         <div className="card">
             <p>{title}</p>
-            <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0 }}>
-                <div className="measurements" style={{ flex: '0 0 auto', paddingRight: '1em' }}>
+            <div style={{display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0}}>
+                <div className="measurements" style={{flex: '0 0 auto', paddingRight: '1em'}}>
                     {data.temperature !== undefined && <p className="temperature">{data.temperature}&deg;</p>}
                     {data.humidity !== undefined && <p>{data.humidity}%</p>}
                     {data.co2 !== undefined && <p>CO2 {data.co2}ppm</p>}
                     {data.noise !== undefined && <p>noise {data.noise}dB</p>}
                     {data.rain !== undefined && <p>{data.rain}mm/h</p>}
                     {data.sum_rain !== undefined && <p>last 1h: {data.sum_rain}mm</p>}
-                    {data.sum_rain_24 !== undefined && <p>last 24h: {data.sum_rain_24}mm</p>}
-                    {data.therm_measured_temperature !== undefined && <p>Temp: {data.therm_measured_temperature}&deg;</p>}
-                    {data.therm_setpoint_temperature !== undefined && <p>Set: {data.therm_setpoint_temperature}&deg;</p>}
+                    {data.sum_rain_24 !== undefined && <p>Today: {data.sum_rain_24}mm</p>}
+                    {data.therm_measured_temperature !== undefined &&
+                        <p className="temperature">{data.therm_measured_temperature}&deg;</p>}
+                    {data.therm_setpoint_temperature !== undefined &&
+                        <p className={"settemperature"}>{data.therm_setpoint_temperature}&deg;</p>}
                     {data.boiler_status !== undefined && <p>Heating: {data.boiler_status ? "ON" : "OFF"}</p>}
-                    {data.boiler_valve_comfort_boost !== undefined && <p>Boost: {data.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>}
+                    {data.boiler_valve_comfort_boost !== undefined &&
+                        <p>Boost: {data.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>}
                     {data.therm_setpoint_mode !== undefined && <p>Mode: {data.therm_setpoint_mode}</p>}
                 </div>
-                <div className="chart-container" style={{ flex: 1, minWidth: 0 }}>
-                    <Line options={options} data={chartData} />
+                <div className="chart-container" style={{flex: 1, minWidth: 0}}>
+                    <Line options={options} data={chartData}/>
                 </div>
             </div>
             <p className="relative-time">{time}</p>
@@ -318,53 +318,53 @@ const MeasurementCard = ({ title, data, measures, time }) => {
     );
 };
 
-const TemperatureComparisonCard = ({ modules }) => {
-    const chartData = {
-        labels: [],
-        datasets: []
-    };
-
-    // Find the module with the most measurements to use as reference for timestamps
-    const referenceModule = modules.reduce((prev, current) => {
-        return (prev?.measures?.length || 0) > (current?.measures?.length || 0) ? prev : current;
-    }, null);
-
-    if (referenceModule?.measures) {
-        chartData.labels = referenceModule.measures.map(m => new Date(m.timestamp * 1000));
-    }
-
+const TemperatureComparisonCard = ({modules}) => {
     // Define a better color palette
     const colors = [
-        { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.1)' },  // Red
-        { border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.1)' },  // Blue
-        { border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.1)' },  // Teal
-        { border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.1)' },  // Orange
-        { border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.1)' }, // Purple
-        { border: 'rgb(201, 203, 207)', background: 'rgba(201, 203, 207, 0.1)' }  // Gray
+        {border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.1)'},  // Red
+        {border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.1)'},  // Blue
+        {border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.1)'},  // Teal
+        {border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.1)'},  // Orange
+        {border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.1)'}, // Purple
+        {border: 'rgb(201, 203, 207)', background: 'rgba(201, 203, 207, 0.1)'}  // Gray
     ];
 
-    // Add temperature datasets for each module that has temperature measurements
-    modules.forEach((module, index) => {
-        if (module?.measures?.some(m => m.temperature !== undefined)) {
+    const chartData = {
+        datasets: modules.map((module, index) => {
+            if (!module?.measures?.length) {
+                return null;
+            }
+
             const colorIndex = index % colors.length;
-            chartData.datasets.push({
+            const data = module.measures
+                .filter(m => m.temperature !== undefined)
+                .map(m => ({
+                    x: new Date(m.timestamp * 1000),
+                    y: m.temperature
+                }));
+
+            if (data.length === 0) {
+                return null;
+            }
+
+            return {
                 label: module.name || module.id,
-                data: referenceModule.measures.map(refTime => {
-                    const matchingMeasure = module.measures.find(m => m.timestamp === refTime.timestamp);
-                    return matchingMeasure?.temperature;
-                }),
+                data: data,
                 borderColor: colors[colorIndex].border,
                 backgroundColor: colors[colorIndex].background,
                 yAxisID: 'temperature',
                 pointRadius: 0,
                 borderWidth: 2
-            });
-        }
-    });
+            };
+        }).filter(dataset => dataset !== null)
+    };
 
     const options = {
         responsive: true,
         maintainAspectRatio: false,
+        animation: {
+            duration: 0 // Disable animations for better performance
+        },
         plugins: {
             legend: {
                 position: 'top',
@@ -404,8 +404,8 @@ const TemperatureComparisonCard = ({ modules }) => {
 
     return (
         <div className="card">
-            <div className="chart-container" style={{ height: '100%', position: 'relative' }}>
-                <Line options={options} data={chartData} />
+            <div className="chart-container" style={{height: '100%', position: 'relative'}}>
+                <Line options={options} data={chartData}/>
             </div>
         </div>
     );
@@ -421,34 +421,65 @@ function getRandomColor() {
     return color;
 }
 
-function App() {
-
-    // in miliseconds
-    const units = {
-        year: 24 * 60 * 60 * 1000 * 365,
-        month: 24 * 60 * 60 * 1000 * 365 / 12,
-        day: 24 * 60 * 60 * 1000,
-        hour: 60 * 60 * 1000,
-        minute: 60 * 1000,
-        second: 1000
-    }
-
-    const rtf = new Intl.RelativeTimeFormat('en', {style: 'narrow', numeric: 'auto'})
-
-    const getRelativeTime = (d1, d2 = new Date()) => {
-        const elapsed = d1 - d2
-        if (isNaN(elapsed)) {
-            return "N/A"
+const Message = ({message, severity, timestamp}) => {
+    const getSeverityColor = () => {
+        switch (severity) {
+            case 'warning':
+                return 'orange';
+            case 'error':
+                return 'red';
+            case 'info':
+            default:
+                return 'blue';
         }
-        // "Math.abs" accounts for both "past" & "future" scenarios
-        for (const u in units)
-            if (Math.abs(elapsed) > units[u] || u === 'second')
-                return rtf.format(Math.round(elapsed / units[u]), u)
-    }
+    };
 
+    return (
+        <div style={{ 
+            color: getSeverityColor(),
+            margin: '0.25em 0',
+            fontSize: '0.9em',
+            display: 'flex',
+            gap: '0.5em',
+            lineHeight: '1.5em',
+            minHeight: '1.5em'
+        }}>
+            <span style={{color: 'gray', fontSize: '0.8em'}}>
+                {getRelativeTime(new Date(timestamp))}
+            </span>
+            <span>{message}</span>
+        </div>
+    );
+};
+
+const units = {
+    year: 24 * 60 * 60 * 1000 * 365,
+    month: 24 * 60 * 60 * 1000 * 365 / 12,
+    day: 24 * 60 * 60 * 1000,
+    hour: 60 * 60 * 1000,
+    minute: 60 * 1000,
+    second: 1000
+};
+
+const rtf = new Intl.RelativeTimeFormat('en', {style: 'narrow', numeric: 'auto'});
+
+const getRelativeTime = (d1, d2 = new Date()) => {
+    const elapsed = d1 - d2;
+    if (isNaN(elapsed)) {
+        return "N/A";
+    }
+    // "Math.abs" accounts for both "past" & "future" scenarios
+    for (const u in units) {
+        if (Math.abs(elapsed) > units[u] || u === 'second') {
+            return rtf.format(Math.round(elapsed / units[u]), u);
+        }
+    }
+};
+
+function App() {
     const [homeStatus, setHomeStatus] = useState({})
     const [homesData, setHomesData] = useState({})
-    const [msg, setMsg] = useState("");
+    const [messages, setMessages] = useState([]);
     const [outdoorModule, setOutdoorModule] = useState({});
     const [poolHouseModule, setPoolHouseModule] = useState({});
     const [homeOfficeModule, setHomeOfficeModule] = useState({});
@@ -457,6 +488,15 @@ function App() {
     const [mainStation, setMainStation] = useState({});
     const [therm, setTherm] = useState({});
     const [time, setTime] = useState(new Date());
+    const MAX_MESSAGES = 10;
+
+    const addMessage = useCallback((message, severity = 'info') => {
+        const timestamp = new Date().toISOString();
+        setMessages(prev => {
+            const newMessages = [...prev, {message, severity, timestamp}];
+            return newMessages.slice(-MAX_MESSAGES);
+        });
+    }, []);
 
     async function signup(tokenId) {
         const user = {
@@ -472,7 +512,7 @@ function App() {
         });
         if (response.status !== 200) {
             console.dir(response);
-            setMsg("Invalid status code at signup: " + response.status + " " + response.statusText + " " + response.statusMessage);
+            addMessage("Invalid status code at signup: " + response.status + " " + response.statusText + " " + response.statusMessage, 'error');
             return;
         }
         console.log("signup OK");
@@ -486,7 +526,7 @@ function App() {
 
     async function getMeasures(module, types) {
         if (!module || !module.id) {
-            console.log("Module not available:", module);
+            addMessage("Module not available", 'warning');
             return;
         }
         //console.log(`Fetching measures for module ${module.id} (${module.type}) with types:`, types);
@@ -494,31 +534,31 @@ function App() {
         params.append('device_id', module.bridge || module.id);
         params.append('module_id', module.id);
         params.append('scale', '30min');
-        params.append('type',types);
+        params.append('type', types);
         let response = await fetch("/api/getmeasure?" + params, {
             method: "GET",
             headers: {
                 "Authorization": "Bearer " + sessionStorage.getItem("token")
             }
         });
-        
+
         if (response.status === 403) {
             const errorData = await response.json();
-            setMsg(`Netatmo API Error (${errorData.code}): ${errorData.message}`);
+            addMessage(`Netatmo API Error (${errorData.code}): ${errorData.message}`, 'error');
             return;
         }
-        
+
         if (response.status !== 200) {
-            setMsg("getMeasure: " + response.status + " " + response.statusText);
+            addMessage(`getMeasure: ${response.status} ${response.statusText}`, 'error');
             console.log("getMeasure status code: " + response.status);
             return;
         }
-        
+
         const data = await response.json();
         //console.log(`Received measures for module ${module.id}:`, data);
-        
+
         if (!data || !data.body || !Array.isArray(data.body)) {
-            console.error("Invalid response format for module", module.id, ":", data);
+            addMessage(`Invalid response format for module ${module.id}`, 'error');
             return;
         }
 
@@ -532,11 +572,11 @@ function App() {
             return values.map((value, index) => {
                 const timestamp = begTime + (index * stepTime);
                 const measurements = {};
-                
+
                 // Map the values based on the requested types
                 types.forEach((type, typeIndex) => {
                     const measurementValue = value[typeIndex];
-                    switch(type) {
+                    switch (type) {
                         case 'temperature':
                             measurements.temperature = measurementValue;
                             break;
@@ -578,12 +618,11 @@ function App() {
     }
 
     async function updateStatus(homeId) {
-        //console.log("updateStatus {}", homeId);
         if (!homeId) {
             return;
         }
         const startTime = performance.now();
-        
+
         let response = await fetch("/api/homestatus?home_id=" + homeId, {
             method: "GET",
             headers: {
@@ -592,90 +631,86 @@ function App() {
         });
 
         if (response.status !== 200) {
-            setMsg("homestatus: " + response.status + " " + response.statusText);
-            console.log("homestatus status code: " + response.status);
+            addMessage(`homestatus: ${response.status} ${response.statusText}`, 'error');
             return;
         }
         let homeStatus = await response.json();
-        //console.log("Received home status:", homeStatus);
-        
+
         if (!homeStatus.body || !homeStatus.body.home || !homeStatus.body.home.modules) {
-            console.error("Invalid home status structure:", homeStatus);
+            addMessage("Invalid home status structure received", 'error');
             return;
         }
-        
+
         if (homeStatus.body.home.modules.length < 7) {
-            console.warn("Unexpected module count, available modules:", homeStatus.body.home.modules.map(m => `${m.id} (${m.type})`).join(', '));
+            addMessage(`Unexpected module count: ${homeStatus.body.home.modules.length} modules found`, 'warning');
         }
+
         setHomeStatus(homeStatus.body.home);
-        
+
         // Create a map to track module updates
         const moduleUpdates = new Map();
-        
+
         // First, collect all the promises for module updates
         const updatePromises = homeStatus.body.home.modules.map(async module => {
             try {
-                //console.log(`Processing module ${module.id} (${module.type})`);
                 if (module.type === 'NAMain') {
                     await getMeasures(module, ['temperature', 'humidity', 'co2', 'noise']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('mainStation', module);
                     } else {
-                        console.warn(`No measures received for main station ${module.id}`);
+                        addMessage(`No measures received for main station ${module.id}`, 'warning');
                     }
                 } else if (module.type === 'NATherm1') {
                     await getMeasures(module, ['temperature', 'sum_boiler_on', 'sp_temperature']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('therm', module);
                     } else {
-                        console.warn(`No measures received for therm ${module.id}`);
+                        addMessage(`No measures received for therm ${module.id}`, 'warning');
                     }
                 } else if (module.type === 'NAModule3') {
                     await getMeasures(module, ['rain', 'sum_rain']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('rainModule', module);
                     } else {
-                        console.warn(`No measures received for rain module ${module.id}`);
+                        addMessage(`No measures received for rain module ${module.id}`, 'warning');
                     }
                 }
-                if (module.id === '02:00:00:a9:a2:14') {                
+                if (module.id === '02:00:00:a9:a2:14') {
                     await getMeasures(module, ['temperature', 'humidity']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('outdoorModule', module);
                     } else {
-                        console.warn(`No measures received for outdoor module ${module.id}`);
+                        addMessage(`No measures received for outdoor module ${module.id}`, 'warning');
                     }
                 } else if (module.id === '03:00:00:0e:f9:6c') {
                     await getMeasures(module, ['temperature', 'humidity', 'co2']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('poolHouseModule', module);
                     } else {
-                        console.warn(`No measures received for pool house module ${module.id}`);
+                        addMessage(`No measures received for pool house module ${module.id}`, 'warning');
                     }
                 } else if (module.id === '03:00:00:0e:f9:3a') {
                     await getMeasures(module, ['temperature', 'humidity', 'co2']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('homeOfficeModule', module);
                     } else {
-                        console.warn(`No measures received for home office module ${module.id}`);
+                        addMessage(`No measures received for home office module ${module.id}`, 'warning');
                     }
                 } else if (module.id === '03:00:00:0e:eb:16') {
                     await getMeasures(module, ['temperature', 'humidity', 'co2']);
                     if (module.measures && module.measures.length > 0) {
                         moduleUpdates.set('bedroomModule', module);
                     } else {
-                        console.warn(`No measures received for bedroom module ${module.id}`);
+                        addMessage(`No measures received for bedroom module ${module.id}`, 'warning');
                     }
                 }
             } catch (error) {
-                console.error(`Error updating module ${module.id}:`, error);
+                addMessage(`Error updating module ${module.id}: ${error.message}`, 'error');
             }
         });
 
         // Wait for all module updates to complete
         await Promise.all(updatePromises);
-
-        //console.log("Module updates completed. Updating state with:", moduleUpdates);
 
         // Update state only after all modules are processed
         if (moduleUpdates.has('outdoorModule')) setOutdoorModule(moduleUpdates.get('outdoorModule'));
@@ -687,15 +722,15 @@ function App() {
         if (moduleUpdates.has('therm')) setTherm(moduleUpdates.get('therm'));
 
         const endTime = performance.now();
-        const duration = (endTime - startTime) / 1000; // Convert to seconds
-        console.log(`updateStatus ${homeId} done in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`);
+        const duration = (endTime - startTime) / 1000;
+        addMessage(`Status update completed in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`, 'info');
     }
-    
+
     useEffect(() => {
         const interval = setInterval(async () => {
             setTime(new Date());
             if (!homesData) {
-                setMsg("Waiting for homes data...");
+                addMessage("Waiting for homes data...", 'info');
                 return;
             }
             await updateStatus(homesData.id)
@@ -786,12 +821,11 @@ function App() {
 
                         console.dir(homesData.body.homes[0]);
                         setHomesData(homesData.body.homes[0]);
-                        setMsg("");
                         let homeId = homesData.body.homes[0].id;
                         await updateStatus(homeId);
                     } catch (error) {
                         console.error("Error fetching data:", error);
-                        setMsg("Error fetching data: " + error.message);
+                        addMessage("Error fetching data: " + error.message, 'error');
                     }
                 }
             }
@@ -807,35 +841,35 @@ function App() {
     return (
         <div className="App">
             <div className={"grid"}>
-                <TemperatureComparisonCard 
+                <TemperatureComparisonCard
                     modules={[
-                        { ...outdoorModule, name: 'Outdoor' },
-                        { ...mainStation, name: 'Dining Room' },
-                        { ...poolHouseModule, name: 'Pool House' },
-                        { ...homeOfficeModule, name: 'Home Office' },
-                        { ...bedroomModule, name: 'Bedroom' },
-                        { ...therm, name: 'Living Room' }, 
+                        {...outdoorModule, name: 'Outdoor'},
+                        {...mainStation, name: 'Dining Room'},
+                        {...poolHouseModule, name: 'Pool House'},
+                        {...homeOfficeModule, name: 'Home Office'},
+                        {...bedroomModule, name: 'Bedroom'},
+                        {...therm, name: 'Living Room'},
                     ]}
                 />
-                <MeasurementCard 
+                <MeasurementCard
                     title="Outdoor"
                     data={outdoorModule}
                     measures={outdoorModule.measures}
                     time={getRelativeTime(new Date(outdoorModule.ts * 1000))}
                 />
-                  <MeasurementCard 
+                <MeasurementCard
                     title="Rain"
                     data={rainModule}
                     measures={rainModule.measures}
                     time={getRelativeTime(new Date(rainModule.ts * 1000))}
                 />
-                <MeasurementCard 
+                <MeasurementCard
                     title="Living Room"
                     data={mainStation}
                     measures={mainStation.measures}
                     time={getRelativeTime(new Date(mainStation.ts * 1000))}
-                />  
-                      <MeasurementCard 
+                />
+                <MeasurementCard
                     title="Pellets"
                     data={{
                         ...therm,
@@ -847,32 +881,44 @@ function App() {
                     }}
                     measures={therm.measures}
                     time=""
-                />            
-                <MeasurementCard 
+                />
+                <MeasurementCard
                     title="Pool House"
                     data={poolHouseModule}
                     measures={poolHouseModule.measures}
                     time={getRelativeTime(new Date(poolHouseModule.ts * 1000))}
                 />
-                <MeasurementCard 
+                <MeasurementCard
                     title="Home Office"
                     data={homeOfficeModule}
                     measures={homeOfficeModule.measures}
                     time={getRelativeTime(new Date(homeOfficeModule.ts * 1000))}
                 />
-            
-                <MeasurementCard 
+
+                <MeasurementCard
                     title="Bedroom"
                     data={bedroomModule}
                     measures={bedroomModule.measures}
                     time={getRelativeTime(new Date(bedroomModule.ts * 1000))}
-                />     
-                    <div className={"card"}>
-                    <p>Time</p>
-                    <p>{time.toISOString()}</p>
-                    <p>Message: {msg}</p>
-                </div>                     
-            
+                />
+                <div className={"card"}>
+                    <p>Last update: {time.toISOString()}</p>
+                    <div style={{
+                        height: `${MAX_MESSAGES * 1.5}em`,
+                        overflowY: 'auto',
+                        padding: '0.25em'
+                    }}>
+                        {messages.map((msg, index) => (
+                            <Message
+                                key={`${msg.timestamp}-${index}`}
+                                message={msg.message}
+                                severity={msg.severity}
+                                timestamp={msg.timestamp}
+                            />
+                        ))}
+                    </div>
+                </div>
+
             </div>
         </div>
     );

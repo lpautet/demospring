@@ -25,6 +25,7 @@ public class AppConfig {
     public LettuceClientConfigurationBuilderCustomizer lettuceClientConfigurationBuilderCustomizer() {
         return clientConfigurationBuilder -> {
             if (clientConfigurationBuilder.build().isUseSsl()) {
+                // this is for Heroku having its own internal CA
                 clientConfigurationBuilder.useSsl().disablePeerVerification();
             }
         };
@@ -39,7 +40,7 @@ public class AppConfig {
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
         // Configure specific TTL for Netatmo API caches
         RedisCacheConfiguration netatmoCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(10))
+                .entryTtl(Duration.ofMinutes(5))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
 
