@@ -65,37 +65,32 @@ public class ApiController {
         }
 
         @Override
-        public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, ClientHttpRequestExecution execution) throws IOException {
-            try {
-                ClientHttpResponse response = execution.execute(request, body);
-                // handle 403 FORBIDDEN (Access token expired if error.code == 3)
-                if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
-                    String responseBody = new String(response.getBody().readAllBytes());
+        public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, @NonNull ClientHttpRequestExecution execution) throws IOException {
+            ClientHttpResponse response = execution.execute(request, body);
+            // handle 403 FORBIDDEN (Access token expired if error.code == 3)
+            if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
+                String responseBody = new String(response.getBody().readAllBytes());
 
-                    // Try to parse the error response
-                    ObjectMapper mapper = new ObjectMapper();
-                    NetatmoErrorResponse error;
-                    try {
-                        error = mapper.readValue(responseBody, NetatmoErrorResponse.class);
-                    } catch (Exception e) {
-                        throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
-                    }
-                    if (error.getError().getCode() == 3) {  // Access token expired
-                        String newToken = refreshToken(user);
-                        if (newToken == null) {
-                            throw new IOException("Failed to refresh token - received null token");
-                        }
-                        request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
-                        return execution.execute(request, body);
-                    } else {
-                        throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
-                    }
+                // Try to parse the error response
+                ObjectMapper mapper = new ObjectMapper();
+                NetatmoErrorResponse error;
+                try {
+                    error = mapper.readValue(responseBody, NetatmoErrorResponse.class);
+                } catch (Exception e) {
+                    throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
                 }
-                return response;
-            } catch (Exception e) {
-                log.error("Error in RefreshTokenInterceptor: {}", e.getMessage(), e);
-                throw new IOException("Failed to refresh token: " + e.getMessage(), e);
+                if (error.getError().getCode() == 3) {  // Access token expired
+                    String newToken = refreshToken(user);
+                    if (newToken == null) {
+                        throw new IOException("Failed to refresh token - received null token");
+                    }
+                    request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
+                    return execution.execute(request, body);
+                } else {
+                    throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
+                }
             }
+            return response;
         }
 
         private String refreshToken(User user) throws IOException {
@@ -167,15 +162,15 @@ public class ApiController {
     @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + {#types}", unless = "#result == null")
     @GetMapping("/getmeasure")
     public String getMeasure(Principal principal,
-                           @RequestParam("device_id") String deviceId,
-                           @RequestParam("module_id") String moduleId,
-                           @RequestParam("scale") String scale,
-                           @RequestParam("type") String[] types) {
+                             @RequestParam("device_id") String deviceId,
+                             @RequestParam("module_id") String moduleId,
+                             @RequestParam("scale") String scale,
+                             @RequestParam("type") String[] types) {
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)
                         .queryParam("module_id", moduleId)
                         .queryParam("scale", scale)
-                        .queryParam("type",String.join(",", types))
+                        .queryParam("type", String.join(",", types))
                         .queryParam("date_begin", (System.currentTimeMillis() / 1000) - 24 * 3600)
                         .build())
                 .retrieve()

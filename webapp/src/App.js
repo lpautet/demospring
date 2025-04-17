@@ -308,12 +308,12 @@ const MeasurementCard = ({title, data, measures, time}) => {
                     {data.boiler_valve_comfort_boost !== undefined &&
                         <p>Boost: {data.boiler_valve_comfort_boost ? "ON" : "OFF"}</p>}
                     {data.therm_setpoint_mode !== undefined && <p>Mode: {data.therm_setpoint_mode}</p>}
+                    <p className="relative-time">{time}</p>
                 </div>
                 <div className="chart-container" style={{flex: 1, minWidth: 0}}>
                     <Line options={options} data={chartData}/>
                 </div>
             </div>
-            <p className="relative-time">{time}</p>
         </div>
     );
 };
@@ -435,7 +435,7 @@ const Message = ({message, severity, timestamp}) => {
     };
 
     return (
-        <div style={{ 
+        <div style={{
             color: getSeverityColor(),
             margin: '0.25em 0',
             fontSize: '0.9em',
@@ -880,7 +880,7 @@ function App() {
                         therm_setpoint_mode: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : undefined
                     }}
                     measures={therm.measures}
-                    time=""
+                    time={getRelativeTime(new Date(therm.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Pool House"
@@ -894,7 +894,6 @@ function App() {
                     measures={homeOfficeModule.measures}
                     time={getRelativeTime(new Date(homeOfficeModule.ts * 1000))}
                 />
-
                 <MeasurementCard
                     title="Bedroom"
                     data={bedroomModule}
