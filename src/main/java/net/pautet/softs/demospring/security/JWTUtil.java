@@ -26,7 +26,15 @@ public class JWTUtil {
 
     @PostConstruct
     public void init() {
-        this.key = Keys.hmacShaKeyFor(appConfig.getJwtSecret().getBytes(StandardCharsets.UTF_8));
+        // Use the configured secret as a seed, but generate a secure key
+        String secret = appConfig.getJwtSecret();
+        if (secret == null || secret.length() < 32) {
+            // If the secret is too short, generate a new secure key
+            this.key = Jwts.SIG.HS256.key().build();
+        } else {
+            // If the secret is long enough, use it to create a secure key
+            this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     public String extractUsername(String token) {

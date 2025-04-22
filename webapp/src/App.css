@@ -37,6 +37,27 @@
   }
 }
 
+.messages-card {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.messages-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px;
+}
+
+.messages-container > div {
+  width: 100%;
+  text-align: left;
+}
+
+.messages-card h3 {
+  margin-bottom: 10px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

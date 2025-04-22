@@ -421,7 +421,7 @@ function getRandomColor() {
     return color;
 }
 
-const Message = ({message, severity, timestamp}) => {
+const Message = ({message, severity, timestamp, source}) => {
     const getSeverityColor = () => {
         switch (severity) {
             case 'warning':
@@ -447,7 +447,7 @@ const Message = ({message, severity, timestamp}) => {
             <span style={{color: 'gray', fontSize: '0.8em'}}>
                 {getRelativeTime(new Date(timestamp))}
             </span>
-            <span>{message}</span>
+            <span>[{source}] {message}</span>
         </div>
     );
 };
@@ -490,12 +490,46 @@ function App() {
     const [time, setTime] = useState(new Date());
     const MAX_MESSAGES = 10;
 
-    const addMessage = useCallback((message, severity = 'info') => {
+    const addMessage = useCallback((message, severity = 'info', source = 'frontend') => {
         const timestamp = new Date().toISOString();
         setMessages(prev => {
-            const newMessages = [...prev, {message, severity, timestamp}];
+            const newMessages = [...prev, {message, severity, timestamp, source}];
             return newMessages.slice(-MAX_MESSAGES);
         });
+    }, []);
+
+    const fetchServerMessages = useCallback(async () => {
+        try {
+            const response = await fetch("/api/messages", {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + sessionStorage.getItem("token")
+                }
+            });
+            if (response.status === 200) {
+                const serverMessages = await response.json();
+                setMessages(prev => {
+                    // Filter out previous server messages
+                    const nonServerMessages = prev.filter(msg => msg.source !== 'server');
+                    // Add new server messages
+                    const newServerMessages = serverMessages.map(msg => ({
+                        message: msg.message,
+                        severity: msg.severity,
+                        timestamp: msg.timestamp,
+                        source: 'server'
+                    }));
+                    // Combine and sort by timestamp
+                    const allMessages = [...nonServerMessages, ...newServerMessages]
+                        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    // Keep only the last MAX_MESSAGES
+                    return allMessages.slice(-MAX_MESSAGES);
+                });
+            } else {
+                console.error("Failed to fetch server messages:", response.status);
+            }
+        } catch (error) {
+            console.error("Error fetching server messages:", error);
+        }
     }, []);
 
     async function signup(tokenId) {
@@ -723,21 +757,30 @@ function App() {
 
         const endTime = performance.now();
         const duration = (endTime - startTime) / 1000;
-        addMessage(`Status update completed in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`, 'info');
+        if (duration > 1) {
+            addMessage(`Status update completed in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`, 'info');
+        }
     }
 
     useEffect(() => {
-        const interval = setInterval(async () => {
-            setTime(new Date());
-            if (!homesData) {
-                addMessage("Waiting for homes data...", 'info');
-                return;
-            }
-            await updateStatus(homesData.id)
-        }, 60000);
-
-        return () => clearInterval(interval);
-    }, [homesData]);
+            const statusInterval = setInterval(async () => {
+                setTime(new Date());
+                if (!homesData) {
+                    addMessage("Waiting for homes data...", 'info');
+                    return;
+                }
+                await updateStatus(homesData.id)
+            }, 60000);
+    
+            const messageInterval = setInterval(() => {
+                fetchServerMessages();
+            }, 30000); // Fetch server messages every 30 seconds
+    
+            return () => {
+                clearInterval(statusInterval);
+                clearInterval(messageInterval);
+            };
+        }, [homesData, fetchServerMessages]);
 
     async function handleToken(tokenId) {
         const authRequest = {
@@ -839,13 +882,13 @@ function App() {
     );
 
     return (
-        <div className="App">
-            <div className={"grid"}>
-                <TemperatureComparisonCard
-                    modules={[
-                        {...outdoorModule, name: 'Outdoor'},
-                        {...mainStation, name: 'Dining Room'},
-                        {...poolHouseModule, name: 'Pool House'},
+            <div className="App">
+                <div className={"grid"}>
+                    <TemperatureComparisonCard
+                        modules={[
+                            {...outdoorModule, name: 'Outdoor'},
+                            {...mainStation, name: 'Dining Room'},
+                            {...poolHouseModule, name: 'Pool House'},
                         {...homeOfficeModule, name: 'Home Office'},
                         {...bedroomModule, name: 'Bedroom'},
                         {...therm, name: 'Living Room'},
@@ -907,14 +950,17 @@ function App() {
                         overflowY: 'auto',
                         padding: '0.25em'
                     }}>
-                        {messages.map((msg, index) => (
-                            <Message
-                                key={`${msg.timestamp}-${index}`}
-                                message={msg.message}
-                                severity={msg.severity}
-                                timestamp={msg.timestamp}
-                            />
-                        ))}
+                        <div className="messages-container">
+                            {messages.map((msg, index) => (
+                                <Message
+                                    key={index}
+                                    message={msg.message}
+                                    severity={msg.severity}
+                                    timestamp={msg.timestamp}
+                                    source={msg.source}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
 

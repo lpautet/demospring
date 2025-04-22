@@ -5,11 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
-import net.pautet.softs.demospring.entity.NetatmoErrorResponse;
-import net.pautet.softs.demospring.entity.SalesforceUserInfo;
-import net.pautet.softs.demospring.entity.TokenResponse;
-import net.pautet.softs.demospring.entity.User;
+import net.pautet.softs.demospring.entity.*;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
+import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
@@ -37,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_API_URI;
@@ -55,6 +54,12 @@ public class ApiController {
     private NetatmoService netatmoService;
     private SalesforceService salesforceService;
     private AppConfig appConfig;
+    private MessageService messageService;
+
+    @GetMapping("/messages")
+    public ResponseEntity<List<Message>> getAllMessages() {
+        return ResponseEntity.ok(messageService.getAllMessages());
+    }
 
     private class RefreshTokenInterceptor implements ClientHttpRequestInterceptor {
 
