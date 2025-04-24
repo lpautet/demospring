@@ -434,6 +434,17 @@ const Message = ({message, severity, timestamp, source}) => {
         }
     };
 
+    const getSourceCode = (source) => {
+      switch (source) {
+          case 'frontend':
+              return 'F';
+          case 'server':
+              return 'S';
+          default:
+              return source;
+      }
+    };
+
     return (
         <div style={{
             color: getSeverityColor(),
@@ -447,7 +458,7 @@ const Message = ({message, severity, timestamp, source}) => {
             <span style={{color: 'gray', fontSize: '0.8em'}}>
                 {getRelativeTime(new Date(timestamp))}
             </span>
-            <span>[{source}] {message}</span>
+            <span>[{getSourceCode(source)}] {message}</span>
         </div>
     );
 };
@@ -758,7 +769,7 @@ function App() {
         const endTime = performance.now();
         const duration = (endTime - startTime) / 1000;
         if (duration > 1) {
-            addMessage(`Status update completed in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules updated`, 'info');
+            addMessage(`Slow update in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules`, 'info');
         }
     }
 
