@@ -137,7 +137,7 @@ public class NetatmoService {
     }
 
     // Retrieve metrics from all Netatmo Weather Station modules
-    public List<Map<String, Object>> getNetatmoMetrics() throws Throwable {
+    public List<Map<String, Object>> getNetatmoMetrics() throws IOException {
         try {
             String responseBody = createApiWebClient().get().uri("/getstationsdata")
                     .retrieve()
@@ -191,9 +191,9 @@ public class NetatmoService {
                 }
             }
             return metrics;
-        } catch (RestClientException rce) {
+        } catch (RestClientException | IOException rce) {
             if (rce.getCause() instanceof NetatmoApiException) {
-                throw rce.getCause();
+                throw (NetatmoApiException) rce.getCause();
             }
             log.error("Error in getNetatmoMetrics: {}",rce.getMessage());
             throw rce;
@@ -208,6 +208,4 @@ public class NetatmoService {
         if (dashboardData.has(NOISE)) data.put(NOISE, dashboardData.get(NOISE).asInt());
         if (dashboardData.has(RAIN)) data.put(RAIN, dashboardData.get(RAIN).asDouble());
     }
-
-
 }
