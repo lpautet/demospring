@@ -16,6 +16,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -136,7 +137,7 @@ public class NetatmoService {
     }
 
     // Retrieve metrics from all Netatmo Weather Station modules
-    public List<Map<String, Object>> getNetatmoMetrics() throws Exception {
+    public List<Map<String, Object>> getNetatmoMetrics() throws Throwable {
         try {
             String responseBody = createApiWebClient().get().uri("/getstationsdata")
                     .retrieve()
@@ -190,12 +191,12 @@ public class NetatmoService {
                 }
             }
             return metrics;
-        } catch (NetatmoApiException e) {
-            log.error("Netatmo API error: {}", e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            log.error("Error in getNetatmoMetrics: {}", e.getMessage());
-            throw new IOException("Error fetching Netatmo metrics: " + e.getMessage(), e);
+        } catch (RestClientException rce) {
+            if (rce.getCause() instanceof NetatmoApiException) {
+                throw rce.getCause();
+            }
+            log.error("Error in getNetatmoMetrics: {}",rce.getMessage());
+            throw rce;
         }
     }
 
