@@ -31,6 +31,9 @@ public class Tasks {
     public void scheduleNetatmoToDataCloud() {
         if (!schedulingService.shouldExecuteNetatmoToDataCloud(NETATMO_TO_DATACLOUD_INTERVAL)) {
             return;
+        } else {
+            // we update even if it fails, otherwise we risk reaching user limits
+            schedulingService.updateNetatmoToDataCloudExecutionTime();
         }
 
         try {
@@ -45,7 +48,6 @@ public class Tasks {
             log.info("Starting scheduled Netatmo data fetch and push at {}", new java.util.Date());
             List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
             salesforceService.pushToDataCloud(metrics);
-            schedulingService.updateNetatmoToDataCloudExecutionTime();
             log.info("Scheduled task completed successfully");
         } catch (NetatmoApiException e) {
             String errorMessage = e.getError() != null && e.getError().getError() != null ? 
