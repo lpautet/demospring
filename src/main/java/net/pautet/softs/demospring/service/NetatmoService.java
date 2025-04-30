@@ -7,12 +7,15 @@ import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.TokenSet;
+import net.pautet.softs.demospring.entity.NetatmoErrorResponse;
+import net.pautet.softs.demospring.exception.NetatmoApiException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -134,46 +137,65 @@ public class NetatmoService {
 
     // Retrieve metrics from all Netatmo Weather Station modules
     public List<Map<String, Object>> getNetatmoMetrics() throws Exception {
-        String responseBody = createApiWebClient().get().uri("/getstationsdata")
-                .retrieve().body(String.class);
+        try {
+            String responseBody = createApiWebClient().get().uri("/getstationsdata")
+                    .retrieve()
+                    .onStatus(status -> status == HttpStatus.FORBIDDEN, (request, response) -> {
+                        try {
+                            String errorBody = new String(response.getBody().readAllBytes());
+                            ObjectMapper mapper = new ObjectMapper();
+                            NetatmoErrorResponse error = mapper.readValue(errorBody, NetatmoErrorResponse.class);
+                            throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
+                        } catch (IOException e) {
+                            throw new RuntimeException("Error parsing Netatmo error response", e);
+                        }
+                    })
+                    .body(String.class);
 
-        JsonNode json = objectMapper.readTree(responseBody);
+            JsonNode json = objectMapper.readTree(responseBody);
 
-        if (!json.has("body") || !json.get("body").has("devices")) {
-            throw new IOException("Invalid Netatmo response: " + responseBody);
-        }
+            if (!json.has("body") || !json.get("body").has("devices")) {
+                throw new IOException("Invalid Netatmo response: " + responseBody);
+            }
 
-        List<Map<String, Object>> metrics = new ArrayList<>();
-        JsonNode devices = json.get("body").get("devices");
+            List<Map<String, Object>> metrics = new ArrayList<>();
+            JsonNode devices = json.get("body").get("devices");
 
-        for (JsonNode device : devices) {
-            Map<String, Object> deviceData = new HashMap<>();
-            deviceData.put(STATION_NAME, device.get(STATION_NAME).asText());
-            deviceData.put(MODULE_NAME, device.get(STATION_NAME).asText());
-            deviceData.put(MODULE_ID, device.get("_id").asText());
-            JsonNode dashboardData = device.get("dashboard_data");
-            deviceData.put(TIMESTAMP, Instant.ofEpochMilli(dashboardData.get("time_utc").asLong() * 1000).toString());
-            addMetrics(deviceData, dashboardData);
-            metrics.add(deviceData);
+            for (JsonNode device : devices) {
+                Map<String, Object> deviceData = new HashMap<>();
+                deviceData.put(STATION_NAME, device.get(STATION_NAME).asText());
+                deviceData.put(MODULE_NAME, device.get(STATION_NAME).asText());
+                deviceData.put(MODULE_ID, device.get("_id").asText());
+                JsonNode dashboardData = device.get("dashboard_data");
+                deviceData.put(TIMESTAMP, Instant.ofEpochMilli(dashboardData.get("time_utc").asLong() * 1000).toString());
+                addMetrics(deviceData, dashboardData);
+                metrics.add(deviceData);
 
-            if (device.has("modules")) {
-                for (JsonNode module : device.get("modules")) {
-                    Map<String, Object> moduleData = new HashMap<>();
-                    moduleData.put(STATION_NAME, device.get(STATION_NAME).asText());
-                    moduleData.put(MODULE_NAME, module.get(MODULE_NAME).asText());
-                    moduleData.put(MODULE_ID, module.get("_id").asText());
-                    JsonNode moduleDashboard = module.get("dashboard_data");
-                    if (moduleDashboard == null) {
-                        log.info("No dashboard data for " + moduleData.get(MODULE_NAME));
-                        continue;
+                if (device.has("modules")) {
+                    for (JsonNode module : device.get("modules")) {
+                        Map<String, Object> moduleData = new HashMap<>();
+                        moduleData.put(STATION_NAME, device.get(STATION_NAME).asText());
+                        moduleData.put(MODULE_NAME, module.get(MODULE_NAME).asText());
+                        moduleData.put(MODULE_ID, module.get("_id").asText());
+                        JsonNode moduleDashboard = module.get("dashboard_data");
+                        if (moduleDashboard == null) {
+                            log.info("No dashboard data for " + moduleData.get(MODULE_NAME));
+                            continue;
+                        }
+                        moduleData.put(TIMESTAMP, Instant.ofEpochMilli(moduleDashboard.get("time_utc").asLong() * 1000).toString());
+                        addMetrics(moduleData, moduleDashboard);
+                        metrics.add(moduleData);
                     }
-                    moduleData.put(TIMESTAMP, Instant.ofEpochMilli(moduleDashboard.get("time_utc").asLong() * 1000).toString());
-                    addMetrics(moduleData, moduleDashboard);
-                    metrics.add(moduleData);
                 }
             }
+            return metrics;
+        } catch (NetatmoApiException e) {
+            log.error("Netatmo API error: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Error in getNetatmoMetrics: {}", e.getMessage());
+            throw new IOException("Error fetching Netatmo metrics: " + e.getMessage(), e);
         }
-        return metrics;
     }
 
     private void addMetrics(Map<String, Object> data, JsonNode dashboardData) {

@@ -14,16 +14,18 @@ public class Message {
 
     private String message;
     private String severity;
-    private Instant timestamp;
     private String source;
+    private Instant timestamp;
 
-    public Message() {}
+    public Message() {
+        this.timestamp = Instant.now();
+    }
 
     public Message(String message, String severity, String source) {
         this.message = message;
         this.severity = severity;
-        this.timestamp = Instant.now();
         this.source = source;
+        this.timestamp = Instant.now();
     }
 
     // Getters and setters
@@ -51,19 +53,19 @@ public class Message {
         this.severity = severity;
     }
 
-    public Instant getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
-    }
-
     public String getSource() {
         return source;
     }
 
     public void setSource(String source) {
         this.source = source;
+    }
+
+    public Instant getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
     }
 }

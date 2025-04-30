@@ -3,9 +3,11 @@ package net.pautet.softs.demospring;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.Message;
+import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.repository.MessageRepository;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
+import net.pautet.softs.demospring.service.SchedulingService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +22,17 @@ public class Tasks {
     private final SalesforceService salesforceService;
     private final NetatmoService netatmoService;
     private final MessageRepository messageRepository;
+    private final SchedulingService schedulingService;
+    private static final long NETATMO_TO_DATACLOUD_INTERVAL = 600000; // 10 minutes in milliseconds
+    private static final long MESSAGE_CLEANUP_INTERVAL = 3600000; // 1 hour in milliseconds
+    private static final long METRICS_COLLECTION_INTERVAL = 300000; // 5 minutes in milliseconds
 
-    @Scheduled(fixedRate = 600000)
+    @Scheduled(fixedRate = 60000) // Check every minute
     public void scheduleNetatmoToDataCloud() {
+        if (!schedulingService.shouldExecuteNetatmoToDataCloud(NETATMO_TO_DATACLOUD_INTERVAL)) {
+            return;
+        }
+
         try {
             // Check if Salesforce configuration is available
             if (System.getenv("SF_PRIVATE_KEY") == null) {
@@ -35,7 +45,14 @@ public class Tasks {
             log.info("Starting scheduled Netatmo data fetch and push at {}", new java.util.Date());
             List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
             salesforceService.pushToDataCloud(metrics);
+            schedulingService.updateNetatmoToDataCloudExecutionTime();
             log.info("Scheduled task completed successfully");
+        } catch (NetatmoApiException e) {
+            String errorMessage = e.getError() != null && e.getError().getError() != null ? 
+                e.getError().getError().getMessage() : "Unknown Netatmo API error";
+            Message message = new Message("Netatmo API Error: " + errorMessage, "error", "server");
+            messageRepository.save(message);
+            log.error("Netatmo API error in scheduled task: {}", errorMessage);
         } catch (Exception e) {
             Message message = new Message("Error pushing to Data Cloud: " + e.getMessage(), "error", "server");
             messageRepository.save(message);
@@ -43,5 +60,35 @@ public class Tasks {
         }
     }
 
+    @Scheduled(fixedRate = 60000) // Check every minute
+    public void scheduleMessageCleanup() {
+        if (!schedulingService.shouldExecuteMessageCleanup(MESSAGE_CLEANUP_INTERVAL)) {
+            return;
+        }
 
+        try {
+            log.info("Starting message cleanup at {}", new java.util.Date());
+            // TODO: Implement message cleanup logic
+            schedulingService.updateMessageCleanupExecutionTime();
+            log.info("Message cleanup completed successfully");
+        } catch (Exception e) {
+            log.error("Error in message cleanup task: ", e);
+        }
+    }
+
+    @Scheduled(fixedRate = 60000) // Check every minute
+    public void scheduleMetricsCollection() {
+        if (!schedulingService.shouldExecuteMetricsCollection(METRICS_COLLECTION_INTERVAL)) {
+            return;
+        }
+
+        try {
+            log.info("Starting metrics collection at {}", new java.util.Date());
+            // TODO: Implement metrics collection logic
+            schedulingService.updateMetricsCollectionExecutionTime();
+            log.info("Metrics collection completed successfully");
+        } catch (Exception e) {
+            log.error("Error in metrics collection task: ", e);
+        }
+    }
 }

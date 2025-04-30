@@ -19,6 +19,14 @@ public class MessageService {
         return messageRepository.findAll();
     }
 
+    public Message saveMessage(Message message) {
+        return messageRepository.save(message);
+    }
+
+    public void deleteMessage(Long id) {
+        messageRepository.deleteById(id);
+    }
+
     @Scheduled(fixedRate = 300000) // Run every 5 minutes
     public void cleanupMessages() {
         // Keep only the last 50 messages
