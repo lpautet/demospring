@@ -141,14 +141,15 @@ public class NetatmoService {
             String responseBody = createApiWebClient().get().uri("/getstationsdata")
                     .retrieve()
                     .onStatus(status -> status == HttpStatus.FORBIDDEN, (request, response) -> {
+                        String errorBody = new String(response.getBody().readAllBytes());
+                        NetatmoErrorResponse error;
                         try {
-                            String errorBody = new String(response.getBody().readAllBytes());
                             ObjectMapper mapper = new ObjectMapper();
-                            NetatmoErrorResponse error = mapper.readValue(errorBody, NetatmoErrorResponse.class);
-                            throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
+                            error = mapper.readValue(errorBody, NetatmoErrorResponse.class);
                         } catch (IOException e) {
-                            throw new RuntimeException("Error parsing Netatmo error response", e);
+                            throw new IOException("Error parsing Netatmo error response", e);
                         }
+                        throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
                     })
                     .body(String.class);
 
