@@ -871,6 +871,12 @@ function App() {
                                 "Authorization": "Bearer " + token
                             }
                         });
+                        if (homesDataResponse.status !== 200) {
+                            const errorData = await homesDataResponse.json();
+                            addMessage(`Netatmo API Error (${errorData.code}): ${errorData.message}`, 'error');
+                            return;
+                        }
+
                         const homesData = await homesDataResponse.json();
 
                         console.dir(homesData.body.homes[0]);
