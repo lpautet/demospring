@@ -17,6 +17,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClientException;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -159,6 +160,7 @@ public class NetatmoService {
     }
 
     // Retrieve metrics from all Netatmo Weather Station modules
+    @Cacheable(value = "netatmoMetrics", unless = "#result == null || #result.isEmpty()")
     public List<Map<String, Object>> getNetatmoMetrics() throws IOException {
         try {
             incrementRequestCount();

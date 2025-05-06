@@ -151,6 +151,7 @@ public class ApiController {
     @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) {
+        System.out.println("Calling for homesdata: " + principal.getName());
         return createApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
     }
@@ -158,6 +159,7 @@ public class ApiController {
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
     public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+        System.out.println("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
@@ -171,6 +173,7 @@ public class ApiController {
                              @RequestParam("module_id") String moduleId,
                              @RequestParam("scale") String scale,
                              @RequestParam("type") String[] types) {
+        System.out.println("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)
                         .queryParam("module_id", moduleId)
