@@ -20,6 +20,8 @@ import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import static net.pautet.softs.demospring.rest.ApiController.NETATMO_CALLBACK_ENDPOINT;
@@ -43,9 +45,9 @@ public class NetatmoService {
     private final NetatmoConfig netatmoConfig;
     private final TokenSet currentToken;
     private final AppConfig appConfig;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final StringRedisTemplate redisTemplate; // Injected Redis client
+    private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
 
     private RestClient createApiWebClient() throws IOException {
         if (this.currentToken.getAccessToken() == null || this.currentToken.getExpiresAt() <= System.currentTimeMillis()) {
@@ -83,6 +85,17 @@ public class NetatmoService {
         if (!loaded.isEmpty()) {
             log.info("Loaded from redis: {}", loaded);
         }
+    }
+
+    private void incrementRequestCount() {
+        String hourKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd:HH"));
+        redisTemplate.opsForValue().increment(NETATMO_REQUESTS_KEY_PREFIX + hourKey);
+    }
+
+    public String getCurrentHourRequestCount() {
+        String hourKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd:HH"));
+        String count = redisTemplate.opsForValue().get(NETATMO_REQUESTS_KEY_PREFIX + hourKey);
+        return count != null ? count : "0";
     }
 
     // Exchange authorization code for access and refresh tokens
@@ -136,9 +149,19 @@ public class NetatmoService {
         saveTokens(tokenResponse);
     }
 
+    private void addMetrics(Map<String, Object> data, JsonNode dashboardData) {
+        if (dashboardData.has(TEMPERATURE)) data.put(TEMPERATURE, dashboardData.get(TEMPERATURE).asDouble());
+        if (dashboardData.has(HUMIDITY)) data.put(HUMIDITY, dashboardData.get(HUMIDITY).asInt());
+        if (dashboardData.has(CO_2)) data.put(CO_2, dashboardData.get(CO_2).asInt());
+        if (dashboardData.has(PRESSURE)) data.put(PRESSURE, dashboardData.get(PRESSURE).asDouble());
+        if (dashboardData.has(NOISE)) data.put(NOISE, dashboardData.get(NOISE).asInt());
+        if (dashboardData.has(RAIN)) data.put(RAIN, dashboardData.get(RAIN).asDouble());
+    }
+
     // Retrieve metrics from all Netatmo Weather Station modules
     public List<Map<String, Object>> getNetatmoMetrics() throws IOException {
         try {
+            incrementRequestCount();
             String responseBody = createApiWebClient().get().uri("/getstationsdata")
                     .retrieve()
                     .onStatus(status -> status == HttpStatus.FORBIDDEN, (request, response) -> {
@@ -198,14 +221,5 @@ public class NetatmoService {
             log.error("Error in getNetatmoMetrics: {}",rce.getMessage());
             throw rce;
         }
-    }
-
-    private void addMetrics(Map<String, Object> data, JsonNode dashboardData) {
-        if (dashboardData.has(TEMPERATURE)) data.put(TEMPERATURE, dashboardData.get(TEMPERATURE).asDouble());
-        if (dashboardData.has(HUMIDITY)) data.put(HUMIDITY, dashboardData.get(HUMIDITY).asInt());
-        if (dashboardData.has(CO_2)) data.put(CO_2, dashboardData.get(CO_2).asInt());
-        if (dashboardData.has(PRESSURE)) data.put(PRESSURE, dashboardData.get(PRESSURE).asDouble());
-        if (dashboardData.has(NOISE)) data.put(NOISE, dashboardData.get(NOISE).asInt());
-        if (dashboardData.has(RAIN)) data.put(RAIN, dashboardData.get(RAIN).asDouble());
     }
 }

@@ -48,17 +48,20 @@ public class Tasks {
             log.info("Starting scheduled Netatmo data fetch and push at {}", new java.util.Date());
             List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
             salesforceService.pushToDataCloud(metrics);
-            log.info("Scheduled task completed successfully");
+            log.info("Scheduled task completed successfully. Current hour Netatmo API request count: {}", 
+                    netatmoService.getCurrentHourRequestCount());
         } catch (NetatmoApiException e) {
             String errorMessage = e.getError() != null && e.getError().getError() != null ? 
                 e.getError().getError().getMessage() : "Unknown Netatmo API error";
             Message message = new Message("Netatmo API Error: " + errorMessage, "error", "server");
             messageRepository.save(message);
-            log.error("Netatmo API error in scheduled task: {}", errorMessage);
+            log.error("Netatmo API error in scheduled task: {}. Current hour request count: {}", 
+                    errorMessage, netatmoService.getCurrentHourRequestCount());
         } catch (Exception e) {
             Message message = new Message("Error pushing to Data Cloud: " + e.getMessage(), "error", "server");
             messageRepository.save(message);
-            log.error("Error in scheduled task: ", e);
+            log.error("Error in scheduled task: {}. Current hour request count: {}", 
+                    e.getMessage(), netatmoService.getCurrentHourRequestCount());
         }
     }
 
