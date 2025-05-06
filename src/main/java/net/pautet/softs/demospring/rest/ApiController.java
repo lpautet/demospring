@@ -84,7 +84,7 @@ public class ApiController {
                 } catch (Exception e) {
                     throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
                 }
-                if (error.getError().getCode() == 3) {  // Access token expired
+                if (error.getError().getCode() == 3 || error.getError().getCode() == 26 ) {  // Access token expired
                     String newToken = refreshToken(user);
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
