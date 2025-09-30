@@ -148,7 +148,7 @@ public class SalesforceConfig {
         if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
         } else {
-            log.info("Salesforce access token response: {}", tokenResponse);
+            log.info("Salesforce access token response: {} ", tokenResponse);
             this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getId(), tokenResponse.getInstanceUrl());
             getSalesforceUser();
         }
