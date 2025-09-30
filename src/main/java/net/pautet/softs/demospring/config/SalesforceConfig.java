@@ -1,6 +1,7 @@
 package net.pautet.softs.demospring.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import io.jsonwebtoken.Jwts;
 import jakarta.annotation.PostConstruct;
 import lombok.Setter;
@@ -125,14 +126,24 @@ public class SalesforceConfig {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
         formData.add("assertion", jwt);
-        TokenResponse tokenResponse = RestClient.builder().baseUrl(loginUrl)
+        // Retrieve raw response first for better diagnostics
+        ResponseEntity<String> postResponse = RestClient.builder().baseUrl(loginUrl)
                 .build().post().uri("/services/oauth2/token").body(formData)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
                     String errorBody = objectMapper.readValue(response.getBody(), String.class);
                     throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 })
-                .body(TokenResponse.class);
+                .toEntity(String.class);
+
+        // Log diagnostics (status, headers, raw body)
+        log.debug("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.debug("Salesforce token: raw body={}", postResponse.getBody());
+
+        // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
+        TokenResponse tokenResponse = objectMapper
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                .readValue(postResponse.getBody(), TokenResponse.class);
 
         if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
