@@ -1,9 +1,7 @@
 package net.pautet.softs.demospring.entity;
 
-import lombok.Data;
 
-@Data
-public class SignupRequest {
+public record SignupRequest (
 
-    private String username;
-}
+     String username
+){}

@@ -51,8 +51,8 @@ public class Tasks {
             log.info("Scheduled task completed successfully. Current hour Netatmo API request count: {}", 
                     netatmoService.getCurrentHourRequestCount());
         } catch (NetatmoApiException e) {
-            String errorMessage = e.getError() != null && e.getError().getError() != null ? 
-                e.getError().getError().getMessage() : "Unknown Netatmo API error";
+            String errorMessage = e.getError() != null && e.getError().error() != null ?
+                e.getError().error().message() : "Unknown Netatmo API error";
             Message message = new Message("Netatmo API Error: " + errorMessage, "error", "server");
             messageRepository.save(message);
             log.error("Netatmo API error in scheduled task: {}. Current hour request count: {}", 

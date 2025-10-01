@@ -3,7 +3,6 @@ package net.pautet.softs.demospring.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import org.springframework.http.HttpStatus;
@@ -24,14 +23,14 @@ import static net.pautet.softs.demospring.service.NetatmoService.*;
 @AllArgsConstructor
 public class SalesforceService {
 
-    private final SalesforceConfig salesforceConfig;
+    private final SalesforceAuth salesforceAuth;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public String fetchData() throws IOException {
         Map<String, String> queryParams = Map.of(
                 "q", "SELECT Id,Name FROM Account LIMIT 10"
         );
-        ResponseEntity<String> responseEntity = salesforceConfig.createSalesforceApiClient().get()
+        ResponseEntity<String> responseEntity = salesforceAuth.createSalesforceApiClient().get()
                 .uri(uriBuilder -> {
                     uriBuilder.path("/services/data/v59.0/query"); // Set the base URL or path
                     queryParams.forEach(uriBuilder::queryParam); // Add each key-value pair as a query param
@@ -46,7 +45,7 @@ public class SalesforceService {
     public String fetchDataCloudData() throws IOException {
         Map<String, Object> payload = new HashMap<>();
         payload.put("sql", "SELECT * FROM Netatmo_Weather_Connector_Weath_D902105F__dll");
-        ResponseEntity<String> responseEntity = salesforceConfig.createDataCloudApiClient().post()
+        ResponseEntity<String> responseEntity = salesforceAuth.createDataCloudApiClient().post()
                 .uri("/api/v2/query").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
@@ -78,7 +77,7 @@ public class SalesforceService {
         }
         payload.put("data", data);
 
-        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceConfig.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/Netatmo_Weather_Connector/WeatherStationReading").contentType(MediaType.APPLICATION_JSON).body(payload)
+        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuth.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/Netatmo_Weather_Connector/WeatherStationReading").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
                     String errorBody = objectMapper.readValue(response.getBody(), String.class);
@@ -101,6 +100,6 @@ public class SalesforceService {
     }
 
     public SalesforceUserInfo getSalesforceUser() throws IOException {
-        return salesforceConfig.getSalesforceUser();
+        return salesforceAuth.getSalesforceUser();
     }
 }

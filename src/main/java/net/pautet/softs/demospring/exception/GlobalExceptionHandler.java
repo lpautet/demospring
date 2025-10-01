@@ -24,7 +24,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(NetatmoApiException.class)
     public ResponseEntity<NetatmoErrorResponse> handleNetatmoApiException(NetatmoApiException e) {
-        log.info("Netatmo exception received: " + e.getError().getError().getCode() + " " + e.getError().getError().getMessage());
+        log.info("Netatmo exception received: " + e.getError().error().code() + " " + e.getError().error().message());
         return ResponseEntity.status(e.getStatus()).body(e.getError());
     }
 } 

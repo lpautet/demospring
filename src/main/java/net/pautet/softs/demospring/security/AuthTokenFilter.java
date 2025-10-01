@@ -8,7 +8,6 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.service.RedisUserService;
-import net.pautet.softs.demospring.service.CustomUserDetailsService;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,7 +24,6 @@ import java.io.IOException;
 public class AuthTokenFilter extends OncePerRequestFilter {
 
     private JWTUtil jwtUtil;
-    private CustomUserDetailsService userDetailsService;
     private RedisUserService redisUserService;
 
     @Override
@@ -36,7 +34,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 String username = jwtUtil.extractUsername(jwt);
                 if (jwtUtil.validateToken(jwt, username)) {
                     User user = redisUserService.findByUsername(username);
-                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    UserDetails userDetails = redisUserService.loadUserByUsername(username);
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(user, null, userDetails.getAuthorities());
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

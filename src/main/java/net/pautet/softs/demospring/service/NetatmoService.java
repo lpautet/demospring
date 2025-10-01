@@ -57,7 +57,6 @@ public class NetatmoService {
         }
         return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
                 .defaultHeader("Authorization", "Bearer " + this.currentToken.getAccessToken())
-                //  .requestInterceptor(new ApiController.RefreshTokenInterceptor(principal))
                 .build();
     }
 
@@ -103,10 +102,10 @@ public class NetatmoService {
     public TokenResponse exchangeCodeForTokens(String code) throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "authorization_code");
-        formData.add("client_id", netatmoConfig.getClientId());
-        formData.add("client_secret", netatmoConfig.getClientSecret());
+        formData.add("client_id", netatmoConfig.clientId());
+        formData.add("client_secret", netatmoConfig.clientSecret());
         formData.add("code", code);
-        formData.add("redirect_uri", appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT);
+        formData.add("redirect_uri", appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT);
         formData.add("scope", NETATMO_SCOPE);
         ResponseEntity<String> response = RestClient.builder().baseUrl(NETATMO_API_URI).build().post().uri("/oauth2/token").body(formData)
                 .retrieve().toEntity(String.class);
@@ -135,8 +134,8 @@ public class NetatmoService {
         }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "refresh_token");
-        formData.add("client_id", netatmoConfig.getClientId());
-        formData.add("client_secret", netatmoConfig.getClientSecret());
+        formData.add("client_id", netatmoConfig.clientId());
+        formData.add("client_secret", netatmoConfig.clientSecret());
         formData.add("refresh_token", this.currentToken.getRefreshToken());
         TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                 .build().post().uri("/oauth2/token").body(formData)
@@ -178,6 +177,8 @@ public class NetatmoService {
                         throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
                     })
                     .body(String.class);
+
+            //System.out.println("getstationdata:" + responseBody);
 
             JsonNode json = objectMapper.readTree(responseBody);
 

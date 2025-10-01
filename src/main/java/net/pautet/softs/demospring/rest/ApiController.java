@@ -84,7 +84,7 @@ public class ApiController {
                 } catch (Exception e) {
                     throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
                 }
-                if (error.getError().getCode() == 3 || error.getError().getCode() == 26 ) {  // Access token expired
+                if (error.error().code() == 3 || error.error().code() == 26 ) {  // Access token expired
                     String newToken = refreshToken(user);
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
@@ -102,8 +102,8 @@ public class ApiController {
             try {
                 MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
                 formData.add("grant_type", "refresh_token");
-                formData.add("client_id", netatmoConfig.getClientId());
-                formData.add("client_secret", netatmoConfig.getClientSecret());
+                formData.add("client_id", netatmoConfig.clientId());
+                formData.add("client_secret", netatmoConfig.clientSecret());
                 formData.add("refresh_token", user.getRefreshToken());
                 TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                         .build().post().uri("/oauth2/token").body(formData)
@@ -151,7 +151,7 @@ public class ApiController {
     @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) {
-        System.out.println("Calling for homesdata: " + principal.getName());
+        //System.out.println("Calling for homesdata: " + principal.getName());
         return createApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
     }
@@ -159,7 +159,7 @@ public class ApiController {
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
     public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
-        System.out.println("Calling for homesdata: " + principal.getName() + ":" + homeId);
+        //System.out.println("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
@@ -173,7 +173,7 @@ public class ApiController {
                              @RequestParam("module_id") String moduleId,
                              @RequestParam("scale") String scale,
                              @RequestParam("type") String[] types) {
-        System.out.println("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
+        // .println("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)
                         .queryParam("module_id", moduleId)
@@ -209,8 +209,8 @@ public class ApiController {
     @GetMapping("/netatmo/authorize")
     public RedirectView authorizeNetatmo() {
         String authUrl = "https://api.netatmo.com/oauth2/authorize" +
-                "?client_id=" + netatmoConfig.getClientId() +
-                "&redirect_uri=" + URLEncoder.encode(appConfig.getRedirectUri() + NETATMO_CALLBACK_ENDPOINT, StandardCharsets.UTF_8) +
+                "?client_id=" + netatmoConfig.clientId() +
+                "&redirect_uri=" + URLEncoder.encode(appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT, StandardCharsets.UTF_8) +
                 "&scope=" + NETATMO_SCOPE +
                 "&state=netatmo_auth_state"; // Simple state for security
         return new RedirectView(authUrl);

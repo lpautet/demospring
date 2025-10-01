@@ -10,7 +10,7 @@ public class NetatmoApiException extends IOException {
     private final HttpStatus status;
 
     public NetatmoApiException(NetatmoErrorResponse error, HttpStatus status) {
-        super(error.getError().getMessage());
+        super(error.error().message());
         this.error = error;
         this.status = status;
     }

@@ -49,8 +49,8 @@ public class AuthController {
     @GetMapping("/authorizeAtmo")
     public ResponseEntity<String> loginNetatmo(@RequestParam String id) {
         URI uri = UriComponentsBuilder.fromUriString(NETATMO_API_URI + "/oauth2/authorize")
-                .queryParam("client_id", netatmoConfig.getClientId())
-                .queryParam("redirect_uri", appConfig.getRedirectUri() + REDIRECT_ENDPOINT)
+                .queryParam("client_id", netatmoConfig.clientId())
+                .queryParam("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT)
                 .queryParam("scope", NETATMO_SCOPE)
                 .queryParam("state", id)
                 .build().toUri();
@@ -61,17 +61,17 @@ public class AuthController {
     public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "authorization_code");
-        formData.add("client_id", netatmoConfig.getClientId());
-        formData.add("client_secret", netatmoConfig.getClientSecret());
+        formData.add("client_id", netatmoConfig.clientId());
+        formData.add("client_secret", netatmoConfig.clientSecret());
         formData.add("code", code);
-        formData.add("redirect_uri", appConfig.getRedirectUri() + REDIRECT_ENDPOINT);
+        formData.add("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT);
         formData.add("scope", NETATMO_SCOPE);
         TokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
                 .retrieve().body(TokenResponse.class);
-        User user = redisUserService.findByUsername(state);
         if (tokenResponse == null) {
             throw new IOException("Unexpected null tokenResponse!");
         }
+        User user = redisUserService.findByUsername(state);
         user.setAccessToken(tokenResponse.getAccessToken());
         user.setRefreshToken(tokenResponse.getRefreshToken());
         user.setExpiresAt(System.currentTimeMillis() + tokenResponse.getExpiresIn()*1000);
@@ -81,7 +81,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody SignupRequest signupRequest) {
-        User user = redisUserService.findByUsername(signupRequest.getUsername());
+        User user = redisUserService.findByUsername(signupRequest.username());
         if (user == null) {
             return ResponseEntity.notFound().build();
         }

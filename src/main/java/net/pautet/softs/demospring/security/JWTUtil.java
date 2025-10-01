@@ -8,7 +8,7 @@ import net.pautet.softs.demospring.config.AppConfig;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
+import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,7 +18,7 @@ import java.util.function.Function;
 public class JWTUtil {
 
     private final AppConfig appConfig;
-    private Key key;
+    private SecretKey key;
 
     public JWTUtil(AppConfig appConfig) {
         this.appConfig = appConfig;
@@ -26,7 +26,7 @@ public class JWTUtil {
 
     @PostConstruct
     public void init() {
-        this.key = Keys.hmacShaKeyFor(appConfig.getJwtSecret().getBytes(StandardCharsets.UTF_8));
+        this.key = Keys.hmacShaKeyFor(appConfig.jwtSecret().getBytes(StandardCharsets.UTF_8));
     }
 
     public String extractUsername(String token) {
@@ -44,7 +44,7 @@ public class JWTUtil {
 
     private Claims extractAllClaims(String token) {
         try {
-            return Jwts.parser().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
         } catch (io.jsonwebtoken.ExpiredJwtException e) {
             throw new JwtExpiredException("JWT token has expired");
         }
@@ -60,8 +60,8 @@ public class JWTUtil {
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
-        return Jwts.builder().setClaims(claims).setSubject(subject).setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
+        return Jwts.builder().claims(claims).subject(subject).issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
                 .signWith(key).compact();
     }
 
