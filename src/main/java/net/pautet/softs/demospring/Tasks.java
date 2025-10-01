@@ -64,7 +64,7 @@ public class Tasks {
                 errorMsg += c.getMessage() + "->";
                 c = c.getCause();
             }
-            errorMsg += "End";
+            errorMsg += "End.";
 
             Message message = new Message("Error pushing to Data Cloud: " + errorMsg, "error", "server");
             messageRepository.save(message);
