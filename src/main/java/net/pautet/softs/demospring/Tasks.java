@@ -58,10 +58,18 @@ public class Tasks {
             log.error("Netatmo API error in scheduled task: {}. Current hour request count: {}", 
                     errorMessage, netatmoService.getCurrentHourRequestCount());
         } catch (Exception e) {
-            Message message = new Message("Error pushing to Data Cloud: " + e.getMessage(), "error", "server");
+            String errorMsg = "";
+            Throwable c = e;
+            while (c != null) {
+                errorMsg += c.getMessage() + "->";
+                c = c.getCause();
+            }
+            errorMsg += "End";
+
+            Message message = new Message("Error pushing to Data Cloud: " + errorMsg, "error", "server");
             messageRepository.save(message);
             log.error("Error in scheduled task: {}. Current hour request count: {}", 
-                    e.getMessage(), netatmoService.getCurrentHourRequestCount());
+                    errorMsg, netatmoService.getCurrentHourRequestCount());
         }
     }
 
