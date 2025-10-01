@@ -137,8 +137,8 @@ public class SalesforceConfig {
                 .toEntity(String.class);
 
         // Log diagnostics (status, headers, raw body)
-        log.debug("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
-        log.debug("Salesforce token: raw body={}", postResponse.getBody());
+        log.info("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.info("Salesforce token: raw body={}", postResponse.getBody());
 
         // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
         TokenResponse tokenResponse = objectMapper
