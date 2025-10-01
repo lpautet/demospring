@@ -127,18 +127,17 @@ public class SalesforceConfig {
         formData.add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
         formData.add("assertion", jwt);
         // Retrieve raw response first for better diagnostics
-        ResponseEntity<String> postResponse = RestClient.builder().baseUrl(loginUrl)
+        ResponseEntity<byte[]> postResponse = RestClient.builder().baseUrl(loginUrl)
                 .build().post().uri("/services/oauth2/token").body(formData)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a string
                     String errorBody = objectMapper.readValue(response.getBody(), String.class);
                     throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
-                })
-                .toEntity(String.class);
+                }).toEntity(byte[].class);
 
         // Log diagnostics (status, headers, raw body)
-        log.info("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
-        log.info("Salesforce token: raw body={}", postResponse.getBody());
+        log.warn("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.warn("Salesforce token: raw body={}", new String(postResponse.getBody()));
 
         // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
         TokenResponse tokenResponse = objectMapper
