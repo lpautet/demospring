@@ -23,11 +23,13 @@ import java.util.Date;
 @Service
 public class SalesforceAuth {
 
-    private SalesforceConfig salesforceConfig;
-
+    private final SalesforceConfig salesforceConfig;
     private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
-
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public SalesforceAuth(SalesforceConfig salesforceConfig) {
+        this.salesforceConfig = salesforceConfig;
+    }
 
     public RestClient createDataCloudApiClient() throws IOException {
         if (salesforceConfig.privateKey() == null) {
