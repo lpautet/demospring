@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,8 +49,9 @@ public class SalesforceService {
         ResponseEntity<String> responseEntity = salesforceAuth.createDataCloudApiClient().post()
                 .uri("/api/v2/query").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a string
-                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                    log.error(errorBody);
                     throw new IOException("Salesforce query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(String.class);
 
@@ -79,8 +81,8 @@ public class SalesforceService {
 
         ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuth.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/Netatmo_Weather_Connector/WeatherStationReading").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a string
-                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
                     throw new IOException("Data Cloud query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(DataCloudIngestResponse.class);
 

@@ -17,6 +17,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Slf4j
@@ -103,8 +104,8 @@ public class SalesforceAuth {
         ResponseEntity<byte[]> postResponse = RestClient.builder().baseUrl(salesforceConfig.loginUrl())
                 .build().post().uri("/services/oauth2/token").body(formData)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a string
-                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
                     throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(byte[].class);
 
@@ -133,8 +134,8 @@ public class SalesforceAuth {
         }
         ResponseEntity<SalesforceUserInfo> userResponse = apiClient.get().retrieve()
                 .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a string
-                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
                     throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 })
                 .toEntity(SalesforceUserInfo.class);
@@ -155,8 +156,8 @@ public class SalesforceAuth {
         ResponseEntity<String> postResponse = apiClient.post().uri("/services/a360/token")
                 .body(formData).retrieve()
                 .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a string
-                    String errorBody = objectMapper.readValue(response.getBody(), String.class);
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
                     throw new IOException("Getting Data Cloud Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 })
                 .toEntity(String.class);
