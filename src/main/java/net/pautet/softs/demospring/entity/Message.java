@@ -1,9 +1,7 @@
 package net.pautet.softs.demospring.entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
+
 import java.time.Instant;
 
 @Entity
@@ -12,6 +10,7 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(length=65535)
     private String message;
     private String severity;
     private String source;

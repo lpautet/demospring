@@ -12,19 +12,14 @@ import java.util.List;
 @Service
 public class MessageService {
 
-    @Autowired
-    private MessageRepository messageRepository;
+    private final MessageRepository messageRepository;
+
+    public MessageService(MessageRepository messageRepository) {
+        this.messageRepository = messageRepository;
+    }
 
     public List<Message> getAllMessages() {
         return messageRepository.findAll();
-    }
-
-    public Message saveMessage(Message message) {
-        return messageRepository.save(message);
-    }
-
-    public void deleteMessage(Long id) {
-        messageRepository.deleteById(id);
     }
 
     @Scheduled(fixedRate = 300000) // Run every 5 minutes
