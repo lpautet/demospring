@@ -1,0 +1,54 @@
+openapi: "3.0.0"
+info:
+  title: "NetatmoWeatherConnector"
+  version: "1.0.0"
+components:
+  schemas:
+    # Define the schema object for your streaming data
+    WeatherStationData:
+      type: object
+      # List the fields (properties) that match your data
+      properties:
+        EventId:
+          type: string
+          description: "Unique identifier for the event (use a UUID)."
+        ModuleName:
+          type: string
+          description: "Name of the specific weather module (e.g., Outdoor, Indoor)."
+          example: "MainModule"
+        DeviceId:
+          type: string
+          description: "Unique identifier for the Netatmo device."
+          example: "70:ee:50:XX:YY:ZZ"
+        Timestamp:
+          type: string
+          format: datetime
+          description: "The time the measurement was taken (required for Engagement data)."
+          example: "2025-10-01T15:30:00Z"
+        Temperature:
+          type: number
+          format: float
+          description: "Temperature in Celsius."
+          example: 21.5
+        Humidity:
+          type: integer
+          description: "Relative humidity percentage."
+          example: 65
+        CO2:
+          type: integer
+          description: "Carbon dioxide level in ppm."
+          example: 500
+        Pressure:
+          type: number
+          format: float
+          description: "Atmospheric pressure in mbar."
+          example: 1013.2
+        Noise:
+          type: integer
+          description: "Noise level in dB."
+          example: 45
+        Rain:
+          type: number
+          format: float
+          description: "Rainfall amount (e.g., in mm)."
+          example: 0.5

@@ -1,11 +1,12 @@
 package net.pautet.softs.demospring.service;
 
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
-import net.pautet.softs.demospring.entity.TokenResponse;
+import net.pautet.softs.demospring.entity.NetatmoTokenResponse;
 import net.pautet.softs.demospring.entity.TokenSet;
 import net.pautet.softs.demospring.entity.NetatmoErrorResponse;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
@@ -46,7 +47,8 @@ public class NetatmoService {
     private final NetatmoConfig netatmoConfig;
     private final TokenSet currentToken;
     private final AppConfig appConfig;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
     private final StringRedisTemplate redisTemplate; // Injected Redis client
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
 
@@ -99,7 +101,7 @@ public class NetatmoService {
     }
 
     // Exchange authorization code for access and refresh tokens
-    public TokenResponse exchangeCodeForTokens(String code) throws IOException {
+    public NetatmoTokenResponse exchangeCodeForTokens(String code) throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "authorization_code");
         formData.add("client_id", netatmoConfig.clientId());
@@ -109,7 +111,7 @@ public class NetatmoService {
         formData.add("scope", NETATMO_SCOPE);
         ResponseEntity<String> response = RestClient.builder().baseUrl(NETATMO_API_URI).build().post().uri("/oauth2/token").body(formData)
                 .retrieve().toEntity(String.class);
-        TokenResponse tokenResponse = objectMapper.readValue(response.getBody(), TokenResponse.class);
+        NetatmoTokenResponse tokenResponse = objectMapper.readValue(response.getBody(), NetatmoTokenResponse.class);
         if (tokenResponse == null) {
             throw new IOException("Failed to exchange code for tokens !");
         }
@@ -121,7 +123,7 @@ public class NetatmoService {
     }
 
     // Save refresh token to Redis
-    public void saveTokens(TokenResponse tokenResponse) {
+    public void saveTokens(NetatmoTokenResponse tokenResponse) {
         this.currentToken.update(tokenResponse);
         redisTemplate.opsForValue().set("netatmo:refresh_token", currentToken.getRefreshToken());
         redisTemplate.opsForValue().set("netatmo:access_token", currentToken.getAccessToken());
@@ -137,10 +139,10 @@ public class NetatmoService {
         formData.add("client_id", netatmoConfig.clientId());
         formData.add("client_secret", netatmoConfig.clientSecret());
         formData.add("refresh_token", this.currentToken.getRefreshToken());
-        TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
+        NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                 .build().post().uri("/oauth2/token").body(formData)
                 .retrieve()
-                .body(TokenResponse.class);
+                .body(NetatmoTokenResponse.class);
         if (tokenResponse == null) {
             throw new IOException("Unexpected null TokenResponse");
         }

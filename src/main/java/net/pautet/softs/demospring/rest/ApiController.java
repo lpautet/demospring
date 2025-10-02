@@ -105,18 +105,18 @@ public class ApiController {
                 formData.add("client_id", netatmoConfig.clientId());
                 formData.add("client_secret", netatmoConfig.clientSecret());
                 formData.add("refresh_token", user.getRefreshToken());
-                TokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
+                NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                         .build().post().uri("/oauth2/token").body(formData)
                         .retrieve()
-                        .body(TokenResponse.class);
+                        .body(NetatmoTokenResponse.class);
                 log.info("Netatmo Token refreshed!");
                 if (tokenResponse == null) {
                     throw new IOException("Unexpected null tokenResponse!");
                 }
-                user.setAccessToken(tokenResponse.getAccessToken());
-                user.setRefreshToken(tokenResponse.getRefreshToken());
+                user.setAccessToken(tokenResponse.accessToken());
+                user.setRefreshToken(tokenResponse.refreshToken());
                 redisUserService.save(user);
-                return tokenResponse.getAccessToken();
+                return tokenResponse.accessToken();
             } catch (Exception e) {
                 log.error("Error refreshing token: {}", e.getMessage(), e);
                 throw new IOException("Failed to refresh token", e);
@@ -223,7 +223,7 @@ public class ApiController {
             return "Error: Invalid state parameter";
         }
 
-        TokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
+        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
         netatmoService.getNetatmoMetrics();
         return "Netatmo tokens retrieved successfully: " + tokenResponse.toString() + "<br>Refresh token saved";
     }

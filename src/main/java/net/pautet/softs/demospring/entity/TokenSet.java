@@ -14,9 +14,9 @@ public class TokenSet {
     @JsonAlias("refresh_token")
     private String refreshToken;
 
-    public void update(TokenResponse tokenResponse) {
-        this.accessToken = tokenResponse.getAccessToken();
-        this.refreshToken = tokenResponse.getRefreshToken();
-        this.expiresAt = System.currentTimeMillis() - 60000 + tokenResponse.getExpiresIn() * 1000;
+    public void update(NetatmoTokenResponse tokenResponse) {
+        this.accessToken = tokenResponse.accessToken();
+        this.refreshToken = tokenResponse.refreshToken();
+        this.expiresAt = System.currentTimeMillis() - 60000 + tokenResponse.expiresIn() * 1000;
     }
 }

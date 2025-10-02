@@ -38,7 +38,7 @@ public class WebSecurityConfig {
                 .sessionManagement(sessionManagement -> sessionManagement.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorizeRequests ->
                         authorizeRequests
-                                .requestMatchers("/api/auth/**", "/*", "/static/**", "/api/netatmo/authorize", "/api/netatmo/callback", "/api/datacloud/data", "/api/salesforce/accounts").permitAll()
+                                .requestMatchers("/api/auth/**", "/*", "/static/**", "/api/netatmo/authorize", "/api/netatmo/callback", "/api/datacloud/data", "/api/salesforce/**").permitAll()
                                 .anyRequest().authenticated()
                 );
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);

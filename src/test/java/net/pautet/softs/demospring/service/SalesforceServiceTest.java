@@ -1,5 +1,7 @@
 package net.pautet.softs.demospring.service;
 
+import net.pautet.softs.demospring.config.ConnectorSchemaProvider;
+import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,7 +22,9 @@ import static org.mockito.Mockito.*;
 
 class SalesforceServiceTest {
 
+    private SalesforceConfig salesforceConfig;
     private SalesforceAuth salesforceAuth;
+    private ConnectorSchemaProvider connectorSchemaProvider;
     private RestClient restClient;
     private RestClient.RequestBodyUriSpec requestBodyUriSpec;
     private RestClient.RequestBodySpec requestBodySpec;
@@ -30,12 +34,17 @@ class SalesforceServiceTest {
     @BeforeEach
     void setUp() throws IOException {
         salesforceAuth = mock(SalesforceAuth.class);
+        salesforceConfig = mock(SalesforceConfig.class);
         restClient = mock(RestClient.class);
         requestBodyUriSpec = mock(RestClient.RequestBodyUriSpec.class);
         requestBodySpec = mock(RestClient.RequestBodySpec.class);
         responseSpec = mock(RestClient.ResponseSpec.class);
 
-        salesforceService = new SalesforceService(salesforceAuth);
+        connectorSchemaProvider = mock(ConnectorSchemaProvider.class);
+        when(connectorSchemaProvider.schemaName()).thenReturn("WeatherStationData");
+        when(salesforceConfig.connectorName()).thenReturn("TestConnector");
+
+        salesforceService = new SalesforceService(salesforceConfig, salesforceAuth, connectorSchemaProvider);
 
         // Default chain wiring
         when(salesforceAuth.createDataCloudApiClient()).thenReturn(restClient);

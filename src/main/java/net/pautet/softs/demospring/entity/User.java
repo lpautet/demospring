@@ -9,8 +9,6 @@ import org.springframework.data.redis.core.RedisHash;
 import java.io.Serializable;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 @RedisHash("user")
 public class User implements Serializable {
     @Id

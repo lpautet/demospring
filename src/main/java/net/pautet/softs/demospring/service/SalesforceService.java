@@ -3,6 +3,8 @@ package net.pautet.softs.demospring.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.ConnectorSchemaProvider;
+import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
 import org.springframework.http.HttpStatus;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,7 +27,9 @@ import static net.pautet.softs.demospring.service.NetatmoService.*;
 @AllArgsConstructor
 public class SalesforceService {
 
+    private final SalesforceConfig salesforceConfig;
     private final SalesforceAuth salesforceAuth;
+    private final ConnectorSchemaProvider connectorSchemaProvider;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public String fetchData() throws IOException {
@@ -66,6 +71,7 @@ public class SalesforceService {
         List<Map<String, Object>> data = new ArrayList<>();
         for (Map<String, Object> metric : metrics) {
             Map<String, Object> readings = new HashMap<>();
+            readings.put("EventId", UUID.randomUUID().toString());
             readings.put("ModuleName", safeString(metric.get(MODULE_NAME)));
             readings.put("DeviceId", safeString(metric.get(MODULE_ID)));
             readings.put("Timestamp", metric.get(TIMESTAMP));
@@ -79,7 +85,8 @@ public class SalesforceService {
         }
         payload.put("data", data);
 
-        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuth.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/Netatmo_Weather_Connector/WeatherStationReading").contentType(MediaType.APPLICATION_JSON).body(payload)
+        String schemaName = connectorSchemaProvider.schemaName();
+        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuth.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/"+salesforceConfig.connectorName()+"/"+schemaName).contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
                     String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);

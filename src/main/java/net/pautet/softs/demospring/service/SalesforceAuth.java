@@ -1,13 +1,13 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
+import net.pautet.softs.demospring.entity.SalesforceApiError;
 import net.pautet.softs.demospring.entity.SalesforceCredentials;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
-import net.pautet.softs.demospring.entity.TokenResponse;
+import net.pautet.softs.demospring.entity.SalesforceTokenResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,7 +41,7 @@ public class SalesforceAuth {
             getDataCloudToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.dataCloudInstanceUrl())
-                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.dataCloudAccessToken())
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.dataCloudAccessToken()))
                 .build();
     }
 
@@ -54,7 +54,7 @@ public class SalesforceAuth {
             getSalesforceToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceInstanceUrl())
-                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.dataCloudAccessToken()))
                 .build();
     }
 
@@ -67,7 +67,7 @@ public class SalesforceAuth {
             getSalesforceToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceUserId())
-                .defaultHeader("Authorization", "Bearer " + this.salesforceCredentials.salesforceAccessToken())
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceAccessToken()))
                 .build();
     }
 
@@ -104,25 +104,33 @@ public class SalesforceAuth {
         ResponseEntity<byte[]> postResponse = RestClient.builder().baseUrl(salesforceConfig.loginUrl())
                 .build().post().uri("/services/oauth2/token").body(formData)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a utf-8 string
-                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                    byte[] bodyBytes = response.getBody().readAllBytes();
+                    // If 400 Bad Request, try to deserialize into SalesforceApiError
+                    if (response.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                        try {
+                            SalesforceApiError apiError = objectMapper.readValue(bodyBytes, SalesforceApiError.class);
+                            throw new IOException("Getting Salesforce Token invalid request (400): " + apiError.error() + " - " + apiError.errorDescription());
+                        } catch (Exception ignore) {
+                            // Fallback to plain string below
+                        }
+                    }
+                    // Fallback: include raw body as UTF-8 string
+                    String errorBody = new String(bodyBytes, StandardCharsets.UTF_8);
                     throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(byte[].class);
 
         // Log diagnostics (status, headers, raw body)
-        log.warn("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
-        log.warn("Salesforce token: raw body={}", new String(postResponse.getBody()));
+        log.debug("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.debug("Salesforce token: raw body={}", postResponse.getBody() != null ? new String(postResponse.getBody()) : "<null>");
 
         // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
-        TokenResponse tokenResponse = objectMapper
-                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                .readValue(postResponse.getBody(), TokenResponse.class);
+        SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
 
-        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+        if (tokenResponse == null || tokenResponse.accessToken() == null) {
             throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
         } else {
             log.info("Salesforce access token response: {} ", tokenResponse);
-            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.getAccessToken(), tokenResponse.getId(), tokenResponse.getInstanceUrl());
+            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.accessToken(), tokenResponse.id(), tokenResponse.instanceUrl());
             getSalesforceUser();
         }
     }
@@ -139,8 +147,6 @@ public class SalesforceAuth {
                     throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 })
                 .toEntity(SalesforceUserInfo.class);
-
-        //System.out.println(userResponse.getBody());
         return userResponse.getBody();
     }
 
@@ -162,24 +168,25 @@ public class SalesforceAuth {
                 })
                 .toEntity(String.class);
 
+        log.debug("getDataCloudToken response: {}", postResponse.getBody());
         // Get the Content-Type header
         MediaType contentType = postResponse.getHeaders().getContentType();
 
         // Handle based on Content-Type
         if (contentType != null && contentType.includes(MediaType.APPLICATION_JSON)) {
-            TokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), TokenResponse.class);
-            if (tokenResponse.getAccessToken() == null || tokenResponse.getExpiresIn() == null) {
+            SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
+            if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
             }
-            log.info("Data Cloud Token: {}", tokenResponse);
-            long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.getExpiresIn();
-            this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.getAccessToken(), expiresAt, "https://" + tokenResponse.getInstanceUrl());
+            log.debug("Data Cloud Token: {}", tokenResponse);
+            long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.expiresIn();
+            this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.accessToken(), expiresAt, "https://" + tokenResponse.instanceUrl());
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now
             this.salesforceCredentials = new SalesforceCredentials();
             throw new IOException("Unexpected Data Cloud access token response: " + postResponse.getBody());
         } else {
-            throw new IOException("Unexpected Data Cloud access token response, content-type=: " + contentType);
+            throw new IOException("Unexpected Data Cloud access token response, content-type: " + contentType);
         }
     }
 }

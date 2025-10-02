@@ -2,11 +2,11 @@ package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
 import net.pautet.softs.demospring.config.AppConfig;
+import net.pautet.softs.demospring.entity.NetatmoTokenResponse;
 import net.pautet.softs.demospring.security.JWTUtil;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.AuthResponse;
 import net.pautet.softs.demospring.entity.SignupRequest;
-import net.pautet.softs.demospring.entity.TokenResponse;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
@@ -66,15 +66,15 @@ public class AuthController {
         formData.add("code", code);
         formData.add("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT);
         formData.add("scope", NETATMO_SCOPE);
-        TokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
-                .retrieve().body(TokenResponse.class);
+        NetatmoTokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
+                .retrieve().body(NetatmoTokenResponse.class);
         if (tokenResponse == null) {
             throw new IOException("Unexpected null tokenResponse!");
         }
         User user = redisUserService.findByUsername(state);
-        user.setAccessToken(tokenResponse.getAccessToken());
-        user.setRefreshToken(tokenResponse.getRefreshToken());
-        user.setExpiresAt(System.currentTimeMillis() + tokenResponse.getExpiresIn()*1000);
+        user.setAccessToken(tokenResponse.accessToken());
+        user.setRefreshToken(tokenResponse.refreshToken());
+        user.setExpiresAt(System.currentTimeMillis() + tokenResponse.expiresIn()*1000);
         redisUserService.save(user);
         return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create("/")).build();
     }

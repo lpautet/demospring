@@ -18,16 +18,18 @@ public record SalesforceConfig (
      String username,
      String loginUrl,
      Long sessionTimeout,
+     String connectorName,
      PrivateKey privateKey
      ) {
 
     @ConstructorBinding
-    public SalesforceConfig(String clientId, String username, String loginUrl, Long sessionTimeout) throws InvalidKeySpecException, NoSuchAlgorithmException {
+    public SalesforceConfig(String clientId, String username, String loginUrl, Long sessionTimeout, String connectorName) throws InvalidKeySpecException, NoSuchAlgorithmException {
         this(
                 clientId,
                 username,
                 loginUrl,
                 sessionTimeout,
+                connectorName,
                 generatePrivateKey()
         );
     }
