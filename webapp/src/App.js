@@ -30,10 +30,148 @@ ChartJS.register(
     TimeScale
 );
 
+// Map rf_status to 0-4 bars (adjust thresholds to match your data semantics)
+function toSignalBars(rf_status) {
+    if (rf_status == null) return 0;
+    // Example: higher value = better signal
+    if (rf_status >= 80) return 4;
+    if (rf_status >= 60) return 3;
+    if (rf_status >= 40) return 2;
+    if (rf_status >= 20) return 1;
+    return 0;
+}
+
+function toBatteryPercent({battery_percent, battery_vp}) {
+    if (battery_percent != null) return battery_percent;
+    if (battery_vp == null) return null;
+    // Map 3.2V -> 0%, 4.2V -> 100% (approx; tune for Netatmo)
+    const pct = Math.max(0, Math.min(100, Math.round((battery_vp - 3.2) / (4.2 - 3.2) * 100)));
+    return pct;
+}
+
+function wifiDbmToBars(dBm) {
+    if (dBm == null) return 0;
+    // Typical Wi‑Fi RSSI mapping: higher (less negative) is better
+    if (dBm >= -55) return 4;
+    if (dBm >= -65) return 3;
+    if (dBm >= -75) return 2;
+    if (dBm >= -85) return 1;
+    return 0;
+}
+
+function getSignalInfo(data) {
+    if (!data) return { level: 0, label: 'Signal strength: N/A' };
+    // Prefer numeric strengths if available (0-100)
+    if (data.rf_strength != null) {
+        const lvl = toSignalBars(Number(data.rf_strength));
+        const state = data.rf_state != null ? ` (${data.rf_state})` : '';
+        return { level: lvl, label: `Signal (RF): ${data.rf_strength}${state}` };
+    }
+    if (data.wifi_strength != null) {
+        const lvl = toSignalBars(Number(data.wifi_strength));
+        const state = data.wifi_state != null ? ` (${data.wifi_state})` : '';
+        return { level: lvl, label: `Signal (Wi‑Fi): ${data.wifi_strength}${state}` };
+    }
+    // Legacy fields
+    if (data.rf_status != null) {
+        return { level: toSignalBars(data.rf_status), label: `Signal (RF): ${data.rf_status}` };
+    }
+    if (data.wifi_status != null) {
+        return { level: wifiDbmToBars(data.wifi_status), label: `Signal (Wi‑Fi): ${data.wifi_status} dBm` };
+    }
+    // Fallback: check meta container
+    const meta = data.meta || {};
+    if (meta.rf_strength != null) {
+        const lvl = toSignalBars(Number(meta.rf_strength));
+        const state = meta.rf_state != null ? ` (${meta.rf_state})` : '';
+        return { level: lvl, label: `Signal (RF): ${meta.rf_strength}${state}` };
+    }
+    if (meta.wifi_strength != null) {
+        const lvl = toSignalBars(Number(meta.wifi_strength));
+        const state = meta.wifi_state != null ? ` (${meta.wifi_state})` : '';
+        return { level: lvl, label: `Signal (Wi‑Fi): ${meta.wifi_strength}${state}` };
+    }
+    if (meta.rf_status != null) {
+        return { level: toSignalBars(meta.rf_status), label: `Signal (RF): ${meta.rf_status}` };
+    }
+    if (meta.wifi_status != null) {
+        return { level: wifiDbmToBars(meta.wifi_status), label: `Signal (Wi‑Fi): ${meta.wifi_status} dBm` };
+    }
+    return { level: 0, label: 'Signal strength: N/A' };
+}
+
+function getBatteryInfo(data) {
+    if (!data) return null;
+    // Prefer explicit percent
+    const percentDirect = data.battery_percent ?? data.meta?.battery_percent;
+    if (percentDirect != null) {
+        const voltage = data.battery_vp ?? data.meta?.battery_vp;
+        const label = voltage != null ? `Battery: ${percentDirect}% (${voltage}V)` : `Battery: ${percentDirect}%`;
+        return { percent: percentDirect, label };
+    }
+    // Map battery_state to an approximate percent if present
+    const state = (data.battery_state ?? data.meta?.battery_state) || null;
+    const levelMv = data.battery_level ?? data.meta?.battery_level;
+    if (state) {
+        const map = { full: 100, high: 75, medium: 50, low: 25 };
+        const p = map[String(state).toLowerCase()] ?? 0;
+        const label = levelMv != null ? `Battery: ${p}% (${state}, ${levelMv})` : `Battery: ${p}% (${state})`;
+        return { percent: p, label };
+    }
+    // If only battery_level available, just display value and use 0% fill
+    if (levelMv != null) {
+        return { percent: 0, label: `Battery level: ${levelMv}` };
+    }
+    // Try voltage mapping if available
+    const percentFromV = toBatteryPercent({
+        battery_percent: undefined,
+        battery_vp: data.battery_vp ?? data.meta?.battery_vp
+    });
+    if (percentFromV != null) {
+        const voltage = data.battery_vp ?? data.meta?.battery_vp;
+        const label = `Battery: ${percentFromV}% (${voltage}V)`;
+        return { percent: percentFromV, label };
+    }
+    return null;
+}
+
+function SignalIcon({level = 0, titleText = "Signal"}) {
+    const bars = [0, 1, 2, 3];
+    return (
+        <span title={titleText} style={{display: 'inline-flex'}}>
+            <svg width="20" height="12" viewBox="0 0 20 12" aria-label="Signal" style={{marginLeft: 6}}>
+                <title>{titleText}</title>
+                {bars.map((b, i) => (
+                    <rect key={i}
+                          x={i * 5} y={12 - (i + 1) * 3} width="3" height={(i + 1) * 3}
+                          fill={i < level ? "#2E7D32" : "#C8E6C9"} rx="1"/>
+                ))}
+            </svg>
+        </span>
+    );
+}
+
+function BatteryIcon({percent = 0, titleText = "Battery"}) {
+    const p = Math.max(0, Math.min(100, percent));
+    return (
+        <span title={titleText} style={{display: 'inline-flex'}}>
+            <svg width="28" height="14" viewBox="0 0 28 14" aria-label="Battery" style={{marginLeft: 6}}>
+                <title>{titleText}</title>
+                <rect x="1" y="3" width="24" height="8" fill="none" stroke="#555" rx="2"/>
+                <rect x="25" y="5" width="2" height="4" fill="#555" rx="1"/>
+                <rect x="2" y="4" width={(p / 100) * 22} height="6"
+                      fill={p < 20 ? "#C62828" : p < 50 ? "#F9A825" : "#2E7D32"} rx="1"/>
+            </svg>
+        </span>
+    );
+}
+
 const MeasurementCard = ({title, data, measures, time}) => {
     if (!measures) {
         return;
     }
+    const signal = getSignalInfo(data);
+    const battery = getBatteryInfo(data);
     const options = {
         responsive: true,
         maintainAspectRatio: false,
@@ -290,7 +428,13 @@ const MeasurementCard = ({title, data, measures, time}) => {
 
     return (
         <div className="card">
-            <p>{title}</p>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                <p style={{margin: 0}}>{title}</p>
+                <div style={{display: 'flex', alignItems: 'center'}}>
+                    <SignalIcon level={signal.level} titleText={signal.label}/>
+                    <BatteryIcon percent={battery ? battery.percent : 0} titleText={battery ? battery.label : 'Battery: N/A'}/>
+                </div>
+            </div>
             <div style={{display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0}}>
                 <div className="measurements" style={{flex: '0 0 auto', paddingRight: '1em'}}>
                     {data.temperature !== undefined && <p className="temperature">{data.temperature}&deg;</p>}
@@ -913,19 +1057,43 @@ function App() {
                 />
                 <MeasurementCard
                     title="Outdoor"
-                    data={outdoorModule}
+                    data={{
+                        ...outdoorModule,
+                        meta: {
+                            rf_status: outdoorModule.rf_status,
+                            wifi_status: outdoorModule.wifi_status,
+                            battery_percent: outdoorModule.battery_percent,
+                            battery_vp: outdoorModule.battery_vp
+                        }
+                    }}
                     measures={outdoorModule.measures}
                     time={getRelativeTime(new Date(outdoorModule.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Rain"
-                    data={rainModule}
+                    data={{
+                        ...rainModule,
+                        meta: {
+                            rf_status: rainModule.rf_status,
+                            wifi_status: rainModule.wifi_status,
+                            battery_percent: rainModule.battery_percent,
+                            battery_vp: rainModule.battery_vp
+                        }
+                    }}
                     measures={rainModule.measures}
                     time={getRelativeTime(new Date(rainModule.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Living Room"
-                    data={mainStation}
+                    data={{
+                        ...mainStation,
+                        meta: {
+                            rf_status: mainStation.rf_status,
+                            wifi_status: mainStation.wifi_status,
+                            battery_percent: mainStation.battery_percent,
+                            battery_vp: mainStation.battery_vp
+                        }
+                    }}
                     measures={mainStation.measures}
                     time={getRelativeTime(new Date(mainStation.ts * 1000))}
                 />
@@ -937,26 +1105,56 @@ function App() {
                         therm_setpoint_temperature: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_temperature : undefined,
                         boiler_status: therm.boiler_status,
                         boiler_valve_comfort_boost: therm.boiler_valve_comfort_boost,
-                        therm_setpoint_mode: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : undefined
+                        therm_setpoint_mode: homeStatus.rooms ? homeStatus.rooms[0].therm_setpoint_mode : undefined,
+                        meta: {
+                            rf_status: therm.rf_status,
+                            wifi_status: therm.wifi_status,
+                            battery_percent: therm.battery_percent,
+                            battery_vp: therm.battery_vp
+                        }
                     }}
                     measures={therm.measures}
                     time={getRelativeTime(new Date(therm.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Pool House"
-                    data={poolHouseModule}
+                    data={{
+                        ...poolHouseModule,
+                        meta: {
+                            rf_status: poolHouseModule.rf_status,
+                            wifi_status: poolHouseModule.wifi_status,
+                            battery_percent: poolHouseModule.battery_percent,
+                            battery_vp: poolHouseModule.battery_vp
+                        }
+                    }}
                     measures={poolHouseModule.measures}
                     time={getRelativeTime(new Date(poolHouseModule.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Home Office"
-                    data={homeOfficeModule}
+                    data={{
+                        ...homeOfficeModule,
+                        meta: {
+                            rf_status: homeOfficeModule.rf_status,
+                            wifi_status: homeOfficeModule.wifi_status,
+                            battery_percent: homeOfficeModule.battery_percent,
+                            battery_vp: homeOfficeModule.battery_vp
+                        }
+                    }}
                     measures={homeOfficeModule.measures}
                     time={getRelativeTime(new Date(homeOfficeModule.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Bedroom"
-                    data={bedroomModule}
+                    data={{
+                        ...bedroomModule,
+                        meta: {
+                            rf_status: bedroomModule.rf_status,
+                            wifi_status: bedroomModule.wifi_status,
+                            battery_percent: bedroomModule.battery_percent,
+                            battery_vp: bedroomModule.battery_vp
+                        }
+                    }}
                     measures={bedroomModule.measures}
                     time={getRelativeTime(new Date(bedroomModule.ts * 1000))}
                 />

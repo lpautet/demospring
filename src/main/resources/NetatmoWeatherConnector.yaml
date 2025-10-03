@@ -7,6 +7,8 @@ components:
     # Define the schema object for your streaming data
     WeatherStationData:
       type: object
+      required:
+        - EventId
       # List the fields (properties) that match your data
       properties:
         EventId:
