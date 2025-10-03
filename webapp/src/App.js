@@ -432,7 +432,7 @@ const MeasurementCard = ({title, data, measures, time}) => {
                 <p style={{margin: 0}}>{title}</p>
                 <div style={{display: 'flex', alignItems: 'center'}}>
                     <SignalIcon level={signal.level} titleText={signal.label}/>
-                    <BatteryIcon percent={battery ? battery.percent : 0} titleText={battery ? battery.label : 'Battery: N/A'}/>
+                    {battery && <BatteryIcon percent={battery.percent} titleText={battery.label}/>}                
                 </div>
             </div>
             <div style={{display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0}}>
