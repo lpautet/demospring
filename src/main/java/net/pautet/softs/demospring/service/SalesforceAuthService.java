@@ -34,7 +34,7 @@ public class SalesforceAuthService {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce Data Cloud integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (this.salesforceCredentials.datacloudTokenResponse().accessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+        if (this.salesforceCredentials.datacloudTokenResponse() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Data Cloud Access Token");
             getDataCloudToken();
         }
