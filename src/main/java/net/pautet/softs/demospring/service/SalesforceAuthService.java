@@ -4,10 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
-import net.pautet.softs.demospring.entity.SalesforceApiError;
-import net.pautet.softs.demospring.entity.SalesforceCredentials;
-import net.pautet.softs.demospring.entity.SalesforceUserInfo;
-import net.pautet.softs.demospring.entity.SalesforceTokenResponse;
+import net.pautet.softs.demospring.entity.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,12 +34,12 @@ public class SalesforceAuthService {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce Data Cloud integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (this.salesforceCredentials.dataCloudAccessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+        if (this.salesforceCredentials.datacloudTokenResponse().accessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Data Cloud Access Token");
             getDataCloudToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.dataCloudInstanceUrl())
-                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.dataCloudAccessToken()))
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.datacloudTokenResponse().accessToken()))
                 .build();
     }
 
@@ -50,11 +47,10 @@ public class SalesforceAuthService {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (salesforceCredentials.salesforceApiTokenResponse() == null ) {
+        if (salesforceCredentials.salesforceApiTokenResponse() == null) {
             log.info("No Salesforce Access Token yet, getting one...");
             getSalesforceToken();
-        }
-        if (salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+        } else if (salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Salesforce Access Token...");
             getSalesforceToken();
         }
@@ -162,19 +158,18 @@ public class SalesforceAuthService {
                 })
                 .toEntity(String.class);
 
-        log.debug("getDataCloudToken response: {}", postResponse.getBody());
+        log.warn("getDataCloudToken response: {}", postResponse.getBody());
         // Get the Content-Type header
         MediaType contentType = postResponse.getHeaders().getContentType();
 
         // Handle based on Content-Type
         if (contentType != null && contentType.includes(MediaType.APPLICATION_JSON)) {
-            SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
+            DatacloudTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), DatacloudTokenResponse.class);
             if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
             }
             log.warn("Data Cloud Token: {}", tokenResponse);
-            long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.expiresIn();
-            this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.accessToken(), expiresAt, "https://" + tokenResponse.instanceUrl());
+            this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now
             this.salesforceCredentials = new SalesforceCredentials();

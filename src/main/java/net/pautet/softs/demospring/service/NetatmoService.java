@@ -54,7 +54,7 @@ public class NetatmoService {
 
     private RestClient createApiWebClient() throws IOException {
         if (this.currentToken.getAccessToken() == null || this.currentToken.getExpiresAt() <= System.currentTimeMillis()) {
-            log.info("Needs a new Access Token");
+            log.info("Needs a new NetAtmo Access Token");
             refreshToken();
         }
         return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
@@ -138,7 +138,7 @@ public class NetatmoService {
         formData.add("grant_type", "refresh_token");
         formData.add("client_id", netatmoConfig.clientId());
         formData.add("client_secret", netatmoConfig.clientSecret());
-        formData.add("refresh_token", this.currentToken.getRefreshToken());
+        formData.add("refresh_token", currentToken.getRefreshToken());
         NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                 .build().post().uri("/oauth2/token").body(formData)
                 .retrieve()
