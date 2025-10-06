@@ -178,7 +178,7 @@ public class SalesforceAuthService {
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now
             this.salesforceCredentials = new SalesforceCredentials();
-            throw new IOException("Unexpected Data Cloud access token response: " + postResponse.getBody());
+            throw new IOException("Unexpected Data Cloud access token response:  " + postResponse.getBody());
         } else {
             throw new IOException("Unexpected Data Cloud access token response, content-type: " + contentType);
         }
