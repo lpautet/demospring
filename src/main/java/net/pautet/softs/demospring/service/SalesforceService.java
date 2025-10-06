@@ -1,12 +1,12 @@
 package net.pautet.softs.demospring.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.ConnectorSchemaProvider;
 import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +24,30 @@ import static net.pautet.softs.demospring.service.NetatmoService.*;
 
 @Slf4j
 @Service
-@AllArgsConstructor
 public class SalesforceService {
 
     private final SalesforceConfig salesforceConfig;
     private final SalesforceAuth salesforceAuth;
     private final ConnectorSchemaProvider connectorSchemaProvider;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    @Autowired
+    public SalesforceService(SalesforceConfig salesforceConfig,
+                             SalesforceAuth salesforceAuth,
+                             ConnectorSchemaProvider connectorSchemaProvider,
+                             ObjectMapper objectMapper) {
+        this.salesforceConfig = salesforceConfig;
+        this.salesforceAuth = salesforceAuth;
+        this.connectorSchemaProvider = connectorSchemaProvider;
+        this.objectMapper = objectMapper;
+    }
+
+    // Backward-compatible constructor for tests not providing ObjectMapper
+    public SalesforceService(SalesforceConfig salesforceConfig,
+                             SalesforceAuth salesforceAuth,
+                             ConnectorSchemaProvider connectorSchemaProvider) {
+        this(salesforceConfig, salesforceAuth, connectorSchemaProvider, new ObjectMapper());
+    }
 
     public String fetchData() throws IOException {
         Map<String, String> queryParams = Map.of(

@@ -26,10 +26,11 @@ public class SalesforceAuth {
 
     private final SalesforceConfig salesforceConfig;
     private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
-    public SalesforceAuth(SalesforceConfig salesforceConfig) {
+    public SalesforceAuth(SalesforceConfig salesforceConfig, ObjectMapper objectMapper) {
         this.salesforceConfig = salesforceConfig;
+        this.objectMapper = objectMapper;
     }
 
     public RestClient createDataCloudApiClient() throws IOException {
@@ -54,7 +55,7 @@ public class SalesforceAuth {
             getSalesforceToken();
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceInstanceUrl())
-                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.dataCloudAccessToken()))
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceAccessToken()))
                 .build();
     }
 

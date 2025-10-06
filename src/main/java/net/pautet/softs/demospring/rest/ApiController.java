@@ -1,7 +1,6 @@
 package net.pautet.softs.demospring.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
@@ -11,8 +10,10 @@ import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
@@ -44,7 +45,6 @@ import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
 @Slf4j
 @RestController
 @RequestMapping("/api")
-@AllArgsConstructor
 public class ApiController {
 
     public static final String NETATMO_CALLBACK_ENDPOINT = "/api" + "/netatmo/callback";
@@ -55,6 +55,34 @@ public class ApiController {
     private SalesforceService salesforceService;
     private AppConfig appConfig;
     private MessageService messageService;
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    public ApiController(NetatmoConfig netatmoConfig,
+                         RedisUserService redisUserService,
+                         NetatmoService netatmoService,
+                         SalesforceService salesforceService,
+                         AppConfig appConfig,
+                         MessageService messageService,
+                         ObjectMapper objectMapper) {
+        this.netatmoConfig = netatmoConfig;
+        this.redisUserService = redisUserService;
+        this.netatmoService = netatmoService;
+        this.salesforceService = salesforceService;
+        this.appConfig = appConfig;
+        this.messageService = messageService;
+        this.objectMapper = objectMapper;
+    }
+
+    // Backward-compatible constructor for tests that didn't inject ObjectMapper
+    public ApiController(NetatmoConfig netatmoConfig,
+                         RedisUserService redisUserService,
+                         NetatmoService netatmoService,
+                         SalesforceService salesforceService,
+                         AppConfig appConfig,
+                         MessageService messageService) {
+        this(netatmoConfig, redisUserService, netatmoService, salesforceService, appConfig, messageService, new ObjectMapper());
+    }
 
     @GetMapping("/messages")
     public ResponseEntity<List<Message>> getAllMessages() {
@@ -72,27 +100,35 @@ public class ApiController {
         @Override
         public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, @NonNull ClientHttpRequestExecution execution) throws IOException {
             ClientHttpResponse response = execution.execute(request, body);
-            // handle 403 FORBIDDEN (Access token expired if error.code == 3)
-            if (response.getStatusCode() == HttpStatus.FORBIDDEN) {
+            HttpStatusCode status = response.getStatusCode();
+            // Handle 401/403 only; avoid reading body for other statuses
+            if (status.isSameCodeAs(HttpStatus.UNAUTHORIZED) || status.isSameCodeAs(HttpStatus.FORBIDDEN)) {
                 String responseBody = new String(response.getBody().readAllBytes());
 
-                // Try to parse the error response
-                ObjectMapper mapper = new ObjectMapper();
+                // Try to parse the error response using injected ObjectMapper
+                ObjectMapper mapper = objectMapper;
                 NetatmoErrorResponse error;
                 try {
                     error = mapper.readValue(responseBody, NetatmoErrorResponse.class);
                 } catch (Exception e) {
-                    throw new IOException("Error parsing Netatmo FORBIDDEN error response: " + responseBody);
+                    // If parsing fails, propagate as IOException with original body (already consumed)
+                    throw new IOException("Error parsing Netatmo error response (" + status + "): " + responseBody);
                 }
-                if (error.error().code() == 3 || error.error().code() == 26 ) {  // Access token expired
+
+                // Netatmo access token expired codes: 3 or 26
+                if (error.error().code() == 3 || error.error().code() == 26) {
                     String newToken = refreshToken(user);
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
                     }
-                    request.getHeaders().replace("Authorization", Collections.singletonList("Bearer " + newToken));
+                    request.getHeaders().set("Authorization", "Bearer " + newToken);
                     return execution.execute(request, body);
                 } else {
-                    throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
+                    HttpStatus httpStatus = HttpStatus.resolve(status.value());
+                    if (httpStatus == null) {
+                        httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+                    }
+                    throw new NetatmoApiException(error, httpStatus);
                 }
             }
             return response;
@@ -151,7 +187,7 @@ public class ApiController {
     @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) {
-        //System.out.println("Calling for homesdata: " + principal.getName());
+       log.debug("Calling for homesdata: " + principal.getName());
         return createApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
     }
@@ -159,21 +195,21 @@ public class ApiController {
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
     public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
-        //System.out.println("Calling for homesdata: " + principal.getName() + ":" + homeId);
+        log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
                 .retrieve().body(String.class);
     }
 
-    @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + {#types}", unless = "#result == null")
+    @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + T(java.util.Arrays).toString(#types)", unless = "#result == null")
     @GetMapping("/getmeasure")
     public String getMeasure(Principal principal,
                              @RequestParam("device_id") String deviceId,
                              @RequestParam("module_id") String moduleId,
                              @RequestParam("scale") String scale,
                              @RequestParam("type") String[] types) {
-        // .println("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
+       log.debug("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)
                         .queryParam("module_id", moduleId)
@@ -183,11 +219,6 @@ public class ApiController {
                         .build())
                 .retrieve()
                 .body(String.class);
-    }
-
-    @GetMapping("/env")
-    public ResponseEntity<Map<String, String>> getEnv() {
-        return ResponseEntity.ok(System.getenv());
     }
 
     @GetMapping("/salesforce/accounts")
