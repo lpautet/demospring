@@ -49,4 +49,19 @@ public record SalesforceConfig (
         return kf.generatePrivate(spec);
     }
 
+    public void validateSalesforceConfig() {
+        if (loginUrl() == null) {
+            throw new IllegalStateException("No salesforce.loginUrl defined");
+        }
+        if (clientId() == null) {
+            throw new IllegalStateException("No salesforce.clientId defined");
+        }
+        if (username() == null) {
+            throw new IllegalStateException("No salesforce.username defined");
+        }
+        if (sessionTimeout() == null) {
+            throw new IllegalStateException("No salesforce.sessionTimeout defined");
+        }
+    }
+
 }

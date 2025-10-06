@@ -27,33 +27,33 @@ import static net.pautet.softs.demospring.service.NetatmoService.*;
 public class SalesforceService {
 
     private final SalesforceConfig salesforceConfig;
-    private final SalesforceAuth salesforceAuth;
+    private final SalesforceAuthService salesforceAuthService;
     private final ConnectorSchemaProvider connectorSchemaProvider;
     private final ObjectMapper objectMapper;
 
     @Autowired
     public SalesforceService(SalesforceConfig salesforceConfig,
-                             SalesforceAuth salesforceAuth,
+                             SalesforceAuthService salesforceAuthService,
                              ConnectorSchemaProvider connectorSchemaProvider,
                              ObjectMapper objectMapper) {
         this.salesforceConfig = salesforceConfig;
-        this.salesforceAuth = salesforceAuth;
+        this.salesforceAuthService = salesforceAuthService;
         this.connectorSchemaProvider = connectorSchemaProvider;
         this.objectMapper = objectMapper;
     }
 
     // Backward-compatible constructor for tests not providing ObjectMapper
     public SalesforceService(SalesforceConfig salesforceConfig,
-                             SalesforceAuth salesforceAuth,
+                             SalesforceAuthService salesforceAuthService,
                              ConnectorSchemaProvider connectorSchemaProvider) {
-        this(salesforceConfig, salesforceAuth, connectorSchemaProvider, new ObjectMapper());
+        this(salesforceConfig, salesforceAuthService, connectorSchemaProvider, new ObjectMapper());
     }
 
     public String fetchData() throws IOException {
         Map<String, String> queryParams = Map.of(
                 "q", "SELECT Id,Name FROM Account LIMIT 10"
         );
-        ResponseEntity<String> responseEntity = salesforceAuth.createSalesforceApiClient().get()
+        ResponseEntity<String> responseEntity = salesforceAuthService.createSalesforceApiClient().get()
                 .uri(uriBuilder -> {
                     uriBuilder.path("/services/data/v59.0/query"); // Set the base URL or path
                     queryParams.forEach(uriBuilder::queryParam); // Add each key-value pair as a query param
@@ -68,7 +68,7 @@ public class SalesforceService {
     public String fetchDataCloudData() throws IOException {
         Map<String, Object> payload = new HashMap<>();
         payload.put("sql", "SELECT * FROM Netatmo_Weather_Connector_Weath_D902105F__dll");
-        ResponseEntity<String> responseEntity = salesforceAuth.createDataCloudApiClient().post()
+        ResponseEntity<String> responseEntity = salesforceAuthService.createDataCloudApiClient().post()
                 .uri("/api/v2/query").contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
@@ -103,7 +103,7 @@ public class SalesforceService {
         payload.put("data", data);
 
         String schemaName = connectorSchemaProvider.schemaName();
-        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuth.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/"+salesforceConfig.connectorName()+"/"+schemaName).contentType(MediaType.APPLICATION_JSON).body(payload)
+        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuthService.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/"+salesforceConfig.connectorName()+"/"+schemaName).contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
                     String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -126,6 +126,6 @@ public class SalesforceService {
     }
 
     public SalesforceUserInfo getSalesforceUser() throws IOException {
-        return salesforceAuth.getSalesforceUser();
+        return salesforceAuthService.getSalesforceUser();
     }
 }

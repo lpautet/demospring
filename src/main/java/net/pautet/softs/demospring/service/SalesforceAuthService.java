@@ -22,15 +22,15 @@ import java.util.Date;
 
 @Slf4j
 @Service
-public class SalesforceAuth {
+public class SalesforceAuthService {
 
     private final SalesforceConfig salesforceConfig;
     private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
     private final ObjectMapper objectMapper;
 
-    public SalesforceAuth(SalesforceConfig salesforceConfig, ObjectMapper objectMapper) {
-        this.salesforceConfig = salesforceConfig;
+    public SalesforceAuthService(SalesforceConfig salesforceConfig, ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.salesforceConfig = salesforceConfig;
     }
 
     public RestClient createDataCloudApiClient() throws IOException {
@@ -50,12 +50,16 @@ public class SalesforceAuth {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
-            log.info("Needs a new Salesforce Access Token");
+        if (salesforceCredentials.salesforceApiTokenResponse() == null ) {
+            log.info("No Salesforce Access Token yet, getting one...");
             getSalesforceToken();
         }
-        return RestClient.builder().baseUrl(salesforceCredentials.salesforceInstanceUrl())
-                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceAccessToken()))
+        if (salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+            log.info("Needs a new Salesforce Access Token...");
+            getSalesforceToken();
+        }
+        return RestClient.builder().baseUrl(salesforceCredentials.salesforceApiTokenResponse().instanceUrl())
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceApiTokenResponse().accessToken()))
                 .build();
     }
 
@@ -63,28 +67,17 @@ public class SalesforceAuth {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (this.salesforceCredentials.salesforceAccessToken() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+        if (this.salesforceCredentials.salesforceApiTokenResponse() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Salesforce Token");
             getSalesforceToken();
         }
-        return RestClient.builder().baseUrl(salesforceCredentials.salesforceUserId())
-                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceAccessToken()))
+        return RestClient.builder().baseUrl(salesforceCredentials.salesforceApiTokenResponse().instanceUrl())
+                .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceApiTokenResponse().accessToken()))
                 .build();
     }
 
     private void getSalesforceToken() throws IOException {
-        if (salesforceConfig.loginUrl() == null) {
-            throw new IllegalStateException("No salesforce.loginUrl defined");
-        }
-        if (salesforceConfig.clientId() == null) {
-            throw new IllegalStateException("No salesforce.clientId defined");
-        }
-        if (salesforceConfig.username() == null) {
-            throw new IllegalStateException("No salesforce.username defined");
-        }
-        if (salesforceConfig.sessionTimeout() == null) {
-            throw new IllegalStateException("No salesforce.sessionTimeout defined");
-        }
+        salesforceConfig.validateSalesforceConfig();
         // salesforce token expiration is defined by the session level parameter in
         // salesforce configuration and there is no way to get a true expiration date for the token
         // usual default is 2 hours
@@ -121,8 +114,8 @@ public class SalesforceAuth {
                 }).toEntity(byte[].class);
 
         // Log diagnostics (status, headers, raw body)
-        log.debug("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
-        log.debug("Salesforce token: raw body={}", postResponse.getBody() != null ? new String(postResponse.getBody()) : "<null>");
+        log.warn("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.warn("Salesforce token: raw body={}", postResponse.getBody() != null ? new String(postResponse.getBody()) : "<null>");
 
         // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
         SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
@@ -130,15 +123,15 @@ public class SalesforceAuth {
         if (tokenResponse == null || tokenResponse.accessToken() == null) {
             throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
         } else {
-            log.debug("Salesforce access token response: {} ", tokenResponse);
-            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse.accessToken(), tokenResponse.id(), tokenResponse.instanceUrl());
+            log.warn("Salesforce access token response: {} ", tokenResponse);
+            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse);
             getSalesforceUser();
         }
     }
 
     public SalesforceUserInfo getSalesforceUser() throws IOException {
         RestClient apiClient = createSalesforceIdClient();
-        if (salesforceCredentials.salesforceUserId() == null) {
+        if (salesforceCredentials.salesforceApiTokenResponse().id() == null) {
             throw new IllegalStateException("No salesforce user id !");
         }
         ResponseEntity<SalesforceUserInfo> userResponse = apiClient.get().retrieve()
@@ -153,12 +146,12 @@ public class SalesforceAuth {
 
     private void getDataCloudToken() throws IOException {
         RestClient apiClient = createSalesforceApiClient();
-        if (salesforceCredentials.salesforceAccessToken() == null) {
+        if (salesforceCredentials.salesforceApiTokenResponse() == null) {
             throw new IllegalStateException("No salesforce access token to get data cloud token !");
         }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:salesforce:grant-type:external:cdp");
-        formData.add("subject_token", salesforceCredentials.salesforceAccessToken());
+        formData.add("subject_token", salesforceCredentials.salesforceApiTokenResponse().accessToken());
         formData.add("subject_token_type", "urn:ietf:params:oauth:token-type:access_token");
         ResponseEntity<String> postResponse = apiClient.post().uri("/services/a360/token")
                 .body(formData).retrieve()
@@ -179,7 +172,7 @@ public class SalesforceAuth {
             if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
             }
-            log.debug("Data Cloud Token: {}", tokenResponse);
+            log.warn("Data Cloud Token: {}", tokenResponse);
             long expiresAt = System.currentTimeMillis() - 60000 + 1000 * tokenResponse.expiresIn();
             this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse.accessToken(), expiresAt, "https://" + tokenResponse.instanceUrl());
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {

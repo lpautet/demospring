@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 class SalesforceServiceTest {
 
     private SalesforceConfig salesforceConfig;
-    private SalesforceAuth salesforceAuth;
+    private SalesforceAuthService salesforceAuthService;
     private ConnectorSchemaProvider connectorSchemaProvider;
     private RestClient restClient;
     private RestClient.RequestBodyUriSpec requestBodyUriSpec;
@@ -33,7 +33,7 @@ class SalesforceServiceTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        salesforceAuth = mock(SalesforceAuth.class);
+        salesforceAuthService = mock(SalesforceAuthService.class);
         salesforceConfig = mock(SalesforceConfig.class);
         restClient = mock(RestClient.class);
         requestBodyUriSpec = mock(RestClient.RequestBodyUriSpec.class);
@@ -44,10 +44,10 @@ class SalesforceServiceTest {
         when(connectorSchemaProvider.schemaName()).thenReturn("WeatherStationData");
         when(salesforceConfig.connectorName()).thenReturn("TestConnector");
 
-        salesforceService = new SalesforceService(salesforceConfig, salesforceAuth, connectorSchemaProvider);
+        salesforceService = new SalesforceService(salesforceConfig, salesforceAuthService, connectorSchemaProvider);
 
         // Default chain wiring
-        when(salesforceAuth.createDataCloudApiClient()).thenReturn(restClient);
+        when(salesforceAuthService.createDataCloudApiClient()).thenReturn(restClient);
         when(restClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodyUriSpec.contentType(any(MediaType.class))).thenReturn(requestBodyUriSpec);
