@@ -23,7 +23,7 @@ public class Tasks {
     private final NetatmoService netatmoService;
     private final MessageRepository messageRepository;
     private final SchedulingService schedulingService;
-    private static final long NETATMO_TO_DATACLOUD_INTERVAL = 600000; // 10 minutes in milliseconds
+    private static final long NETATMO_TO_DATACLOUD_INTERVAL = 300000; // 10 minutes in milliseconds
     private static final long MESSAGE_CLEANUP_INTERVAL = 3600000; // 1 hour in milliseconds
     private static final long METRICS_COLLECTION_INTERVAL = 300000; // 5 minutes in milliseconds
 
