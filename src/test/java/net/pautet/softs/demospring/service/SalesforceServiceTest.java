@@ -44,7 +44,7 @@ class SalesforceServiceTest {
         when(connectorSchemaProvider.schemaName()).thenReturn("WeatherStationData");
         when(salesforceConfig.connectorName()).thenReturn("TestConnector");
 
-        salesforceService = new SalesforceService(salesforceConfig, salesforceAuthService, connectorSchemaProvider);
+        salesforceService = new SalesforceService(salesforceConfig, salesforceAuthService, connectorSchemaProvider, null);
 
         // Default chain wiring
         when(salesforceAuthService.createDataCloudApiClient()).thenReturn(restClient);

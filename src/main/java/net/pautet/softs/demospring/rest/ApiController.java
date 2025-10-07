@@ -49,13 +49,13 @@ public class ApiController {
 
     public static final String NETATMO_CALLBACK_ENDPOINT = "/api" + "/netatmo/callback";
 
-    private NetatmoConfig netatmoConfig;
-    private RedisUserService redisUserService;
-    private NetatmoService netatmoService;
-    private SalesforceService salesforceService;
-    private AppConfig appConfig;
-    private MessageService messageService;
-    private ObjectMapper objectMapper;
+    private final NetatmoConfig netatmoConfig;
+    private final RedisUserService redisUserService;
+    private final NetatmoService netatmoService;
+    private final SalesforceService salesforceService;
+    private final AppConfig appConfig;
+    private final MessageService messageService;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     public ApiController(NetatmoConfig netatmoConfig,
@@ -72,16 +72,6 @@ public class ApiController {
         this.appConfig = appConfig;
         this.messageService = messageService;
         this.objectMapper = objectMapper;
-    }
-
-    // Backward-compatible constructor for tests that didn't inject ObjectMapper
-    public ApiController(NetatmoConfig netatmoConfig,
-                         RedisUserService redisUserService,
-                         NetatmoService netatmoService,
-                         SalesforceService salesforceService,
-                         AppConfig appConfig,
-                         MessageService messageService) {
-        this(netatmoConfig, redisUserService, netatmoService, salesforceService, appConfig, messageService, new ObjectMapper());
     }
 
     @GetMapping("/messages")
@@ -145,7 +135,8 @@ public class ApiController {
                         .build().post().uri("/oauth2/token").body(formData)
                         .retrieve()
                         .body(NetatmoTokenResponse.class);
-                log.info("Netatmo Token refreshed!");
+                log.warn("Netatmo Token Response: " + tokenResponse);
+                messageService.info("Netatmo Token refreshed!");
                 if (tokenResponse == null) {
                     throw new IOException("Unexpected null tokenResponse!");
                 }

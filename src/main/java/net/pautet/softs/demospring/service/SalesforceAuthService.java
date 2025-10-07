@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
-import net.pautet.softs.demospring.entity.*;
-import net.pautet.softs.demospring.repository.MessageRepository;
+import net.pautet.softs.demospring.entity.DatacloudTokenResponse;
+import net.pautet.softs.demospring.entity.SalesforceApiError;
+import net.pautet.softs.demospring.entity.SalesforceCredentials;
+import net.pautet.softs.demospring.entity.SalesforceTokenResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,7 +19,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -147,9 +148,6 @@ public class SalesforceAuthService {
 
     private void getDataCloudToken() throws IOException {
         RestClient apiClient = createSalesforceApiClient();
-        if (salesforceCredentials.salesforceApiTokenResponse() == null) {
-            throw new IllegalStateException("No salesforce access token to get data cloud token !");
-        }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "urn:salesforce:grant-type:external:cdp");
         formData.add("subject_token", salesforceCredentials.salesforceApiTokenResponse().accessToken());
@@ -169,17 +167,28 @@ public class SalesforceAuthService {
 
         // Handle based on Content-Type
         if (contentType != null && contentType.includes(MediaType.APPLICATION_JSON)) {
-            DatacloudTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), DatacloudTokenResponse.class);
-            if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
-                throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
+            try {
+                DatacloudTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), DatacloudTokenResponse.class);
+                if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
+                    throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
+                }
+                log.warn("Data Cloud Token: {}", tokenResponse);
+                messageService.info("Got new DataCloud token.");
+                this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
+            } catch (UnrecognizedPropertyException upe) {
+                log.error("DataCloud Token response contains an unrecognized field: ", upe);
+                throw upe;
+            } catch (MismatchedInputException mie) {
+                log.error("DataCloud Token response mismatch: ", mie);
+                throw mie;
+            } catch (JsonParseException jpe) {
+                log.error("DataCloud Access Token JSON is invalid!", jpe);
+                throw jpe;
             }
-            log.warn("Data Cloud Token: {}", tokenResponse);
-            messageService.info("Got new DataCloud token.");
-            this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now
             this.salesforceCredentials = new SalesforceCredentials();
-            throw new IOException("Unexpected Data Cloud access token response:  " + postResponse.getBody());
+            throw new IOException("Unexpected Data Cloud access token response (HTML):  " + postResponse.getBody());
         } else {
             throw new IOException("Unexpected Data Cloud access token response, content-type: " + contentType);
         }

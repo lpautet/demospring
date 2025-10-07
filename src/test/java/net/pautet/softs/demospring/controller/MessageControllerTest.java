@@ -23,7 +23,7 @@ class MessageControllerTest {
     @BeforeEach
     void setUp() {
         messageService = mock(MessageService.class);
-        apiController = new ApiController(null, null, null, null, null, messageService);
+        apiController = new ApiController(null, null, null, null, null, messageService, null);
     }
 
     @Test

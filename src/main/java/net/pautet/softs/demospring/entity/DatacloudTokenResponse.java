@@ -3,7 +3,6 @@ package net.pautet.softs.demospring.entity;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-@JsonIgnoreProperties(ignoreUnknown = false)
 public record DatacloudTokenResponse(
         @JsonAlias("access_token")
         String accessToken,

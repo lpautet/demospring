@@ -30,14 +30,16 @@ public class SalesforceService {
     private final SalesforceConfig salesforceConfig;
     private final SalesforceAuthService salesforceAuthService;
     private final ConnectorSchemaProvider connectorSchemaProvider;
+    private final MessageService messageService;
 
     public SalesforceService(SalesforceConfig salesforceConfig,
                              SalesforceAuthService salesforceAuthService,
-                             ConnectorSchemaProvider connectorSchemaProvider
-                            ) {
+                             ConnectorSchemaProvider connectorSchemaProvider, MessageService messageService
+    ) {
         this.salesforceConfig = salesforceConfig;
         this.salesforceAuthService = salesforceAuthService;
         this.connectorSchemaProvider = connectorSchemaProvider;
+        this.messageService = messageService;
     }
 
     public String fetchData() throws IOException {
@@ -107,6 +109,7 @@ public class SalesforceService {
         }
 
         log.info("Data Cloud accepted ingest data");
+        messageService.info("Pushed to DataCloud successfully.");
     }
 
     private String safeString(Object value) {
