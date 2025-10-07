@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -29,24 +30,14 @@ public class SalesforceService {
     private final SalesforceConfig salesforceConfig;
     private final SalesforceAuthService salesforceAuthService;
     private final ConnectorSchemaProvider connectorSchemaProvider;
-    private final ObjectMapper objectMapper;
 
-    @Autowired
     public SalesforceService(SalesforceConfig salesforceConfig,
                              SalesforceAuthService salesforceAuthService,
-                             ConnectorSchemaProvider connectorSchemaProvider,
-                             ObjectMapper objectMapper) {
+                             ConnectorSchemaProvider connectorSchemaProvider
+                            ) {
         this.salesforceConfig = salesforceConfig;
         this.salesforceAuthService = salesforceAuthService;
         this.connectorSchemaProvider = connectorSchemaProvider;
-        this.objectMapper = objectMapper;
-    }
-
-    // Backward-compatible constructor for tests not providing ObjectMapper
-    public SalesforceService(SalesforceConfig salesforceConfig,
-                             SalesforceAuthService salesforceAuthService,
-                             ConnectorSchemaProvider connectorSchemaProvider) {
-        this(salesforceConfig, salesforceAuthService, connectorSchemaProvider, new ObjectMapper());
     }
 
     public String fetchData() throws IOException {
@@ -127,6 +118,14 @@ public class SalesforceService {
     }
 
     public SalesforceUserInfo getSalesforceUser() throws IOException {
-        return salesforceAuthService.getSalesforceUser();
+        RestClient apiClient = salesforceAuthService.createSalesforceIdClient();
+        ResponseEntity<SalesforceUserInfo> userResponse = apiClient.get().retrieve()
+                .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
+                    // For any other status, throw an exception with the response body as a utf-8 string
+                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                    throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
+                })
+                .toEntity(SalesforceUserInfo.class);
+        return userResponse.getBody();
     }
 }

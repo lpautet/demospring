@@ -1,10 +1,14 @@
 package net.pautet.softs.demospring.service;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.*;
+import net.pautet.softs.demospring.repository.MessageRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +17,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
@@ -24,17 +29,19 @@ public class SalesforceAuthService {
     private final SalesforceConfig salesforceConfig;
     private SalesforceCredentials salesforceCredentials = new SalesforceCredentials();
     private final ObjectMapper objectMapper;
+    private final MessageService messageService;
 
-    public SalesforceAuthService(SalesforceConfig salesforceConfig, ObjectMapper objectMapper) {
+    public SalesforceAuthService(SalesforceConfig salesforceConfig, ObjectMapper objectMapper, MessageService messageService) {
         this.objectMapper = objectMapper;
         this.salesforceConfig = salesforceConfig;
+        this.messageService = messageService;
     }
 
     public RestClient createDataCloudApiClient() throws IOException {
         if (salesforceConfig.privateKey() == null) {
             throw new IllegalStateException("Salesforce Data Cloud integration is disabled. SF_PRIVATE_KEY not configured.");
         }
-        if (this.salesforceCredentials.datacloudTokenResponse() == null || this.salesforceCredentials.datacloudTokenResponse().accessToken() == null  ||  this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
+        if (this.salesforceCredentials.datacloudTokenResponse() == null || this.salesforceCredentials.datacloudTokenResponse().accessToken() == null || this.salesforceCredentials.dataCloudAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Data Cloud Access Token");
             getDataCloudToken();
         }
@@ -66,6 +73,9 @@ public class SalesforceAuthService {
         if (this.salesforceCredentials.salesforceApiTokenResponse() == null || this.salesforceCredentials.salesforceAccessTokenExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new Salesforce Token");
             getSalesforceToken();
+        }
+        if (salesforceCredentials.salesforceApiTokenResponse().id() == null) {
+            throw new IllegalStateException("No salesforce user id !");
         }
         return RestClient.builder().baseUrl(salesforceCredentials.salesforceApiTokenResponse().instanceUrl())
                 .defaultHeaders(headers -> headers.setBearerAuth(this.salesforceCredentials.salesforceApiTokenResponse().accessToken()))
@@ -109,35 +119,30 @@ public class SalesforceAuthService {
                     throw new IOException("Getting Salesforce Token failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(byte[].class);
 
-        // Log diagnostics (status, headers, raw body)
-        log.warn("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
-        log.warn("Salesforce token: raw body={}", postResponse.getBody() != null ? new String(postResponse.getBody()) : "<null>");
+        log.debug("Salesforce token: status={} headers={}", postResponse.getStatusCode(), postResponse.getHeaders());
+        log.debug("Salesforce token: raw body={}", postResponse.getBody() != null ? new String(postResponse.getBody()) : "<null>");
 
-        // Parse JSON into TokenResponse, ignoring unknown properties for resilience during diagnostics
-        SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
+        try {
+            SalesforceTokenResponse tokenResponse = objectMapper.readValue(postResponse.getBody(), SalesforceTokenResponse.class);
 
-        if (tokenResponse == null || tokenResponse.accessToken() == null) {
-            throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
-        } else {
-            log.warn("Salesforce access token response: {} ", tokenResponse);
-            this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt - 60 * 1000, tokenResponse);
-            getSalesforceUser();
+            if (tokenResponse == null || tokenResponse.accessToken() == null) {
+                throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
+            } else {
+                log.warn("Salesforce access token response: {} ", tokenResponse);
+                messageService.info("Got new Salesforce API token.");
+                this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt, tokenResponse);
+                //getSalesforceUser();
+            }
+        } catch (UnrecognizedPropertyException upe) {
+            log.error("Salesforce Token response contains an unrecognized field: ", upe);
+            throw upe;
+        } catch (MismatchedInputException mie) {
+            log.error("Salesforce Token response mismatch: ", mie);
+            throw mie;
+        } catch (JsonParseException jpe) {
+            log.error("Salesforce Access Token JSON is invalid!", jpe);
+            throw jpe;
         }
-    }
-
-    public SalesforceUserInfo getSalesforceUser() throws IOException {
-        RestClient apiClient = createSalesforceIdClient();
-        if (salesforceCredentials.salesforceApiTokenResponse().id() == null) {
-            throw new IllegalStateException("No salesforce user id !");
-        }
-        ResponseEntity<SalesforceUserInfo> userResponse = apiClient.get().retrieve()
-                .onStatus(status -> status != HttpStatus.OK, (request, response) -> {
-                    // For any other status, throw an exception with the response body as a utf-8 string
-                    String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
-                    throw new IOException("Getting Salesforce User failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
-                })
-                .toEntity(SalesforceUserInfo.class);
-        return userResponse.getBody();
     }
 
     private void getDataCloudToken() throws IOException {
@@ -168,7 +173,8 @@ public class SalesforceAuthService {
             if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
             }
-            log.info("Data Cloud Token: {}", tokenResponse);
+            log.warn("Data Cloud Token: {}", tokenResponse);
+            messageService.info("Got new DataCloud token.");
             this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now

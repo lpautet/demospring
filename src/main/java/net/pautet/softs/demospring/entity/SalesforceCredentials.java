@@ -6,8 +6,8 @@ public record SalesforceCredentials(Long salesforceAccessTokenExpiresAt,
                                     Long dataCloudAccessTokenExpiresAt,
                                     String dataCloudInstanceUrl) {
 
-    public SalesforceCredentials(SalesforceCredentials salesforceCredentials, long salesforceAccessTokenExpiresAt, SalesforceTokenResponse salesforceApiTokenResponse) {
-        this(salesforceAccessTokenExpiresAt, salesforceApiTokenResponse, salesforceCredentials.datacloudTokenResponse, salesforceCredentials.dataCloudAccessTokenExpiresAt, salesforceCredentials.dataCloudInstanceUrl);
+    public SalesforceCredentials(SalesforceCredentials salesforceCredentials,long expiresAt, SalesforceTokenResponse salesforceApiTokenResponse) {
+        this(expiresAt - 60 * 1000, salesforceApiTokenResponse, salesforceCredentials.datacloudTokenResponse , salesforceCredentials.dataCloudAccessTokenExpiresAt, salesforceCredentials.dataCloudInstanceUrl);
     }
 
     public SalesforceCredentials(SalesforceCredentials salesforceCredentials, DatacloudTokenResponse datacloudTokenResponse) {

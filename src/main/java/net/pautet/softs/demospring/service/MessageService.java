@@ -17,6 +17,12 @@ public class MessageService {
         this.messageRepository = messageRepository;
     }
 
+    public void info(String message) {
+        messageRepository.save(new Message(message,
+                "INFO",
+                "server"));
+    }
+
     public List<Message> getAllMessages() {
         return messageRepository.findAll();
     }
