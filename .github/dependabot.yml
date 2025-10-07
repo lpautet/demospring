@@ -1,0 +1,63 @@
+version: 2
+updates:
+  # Enable version updates for Maven
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "lpautet"
+    assignees:
+      - "lpautet"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Group dependency updates to reduce PR noise
+    groups:
+      spring-boot:
+        patterns:
+          - "org.springframework.boot:*"
+      spring-security:
+        patterns:
+          - "org.springframework.security:*"
+      jwt:
+        patterns:
+          - "io.jsonwebtoken:*"
+
+  # Enable version updates for npm (React frontend)
+  - package-ecosystem: "npm"
+    directory: "/webapp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "lpautet"
+    assignees:
+      - "lpautet"
+    commit-message:
+      prefix: "deps(frontend)"
+      include: "scope"
+    # Group React-related updates
+    groups:
+      react:
+        patterns:
+          - "react*"
+      charting:
+        patterns:
+          - "chart.js"
+          - "react-chartjs-2"
+          - "chartjs-*"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5

@@ -158,7 +158,7 @@ public class SalesforceAuthService {
                 })
                 .toEntity(String.class);
 
-        log.warn("getDataCloudToken response: {}", postResponse.getBody());
+        log.debug("getDataCloudToken response: {}", postResponse.getBody());
         // Get the Content-Type header
         MediaType contentType = postResponse.getHeaders().getContentType();
 
@@ -168,7 +168,7 @@ public class SalesforceAuthService {
             if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                 throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
             }
-            log.warn("Data Cloud Token: {}", tokenResponse);
+            log.info("Data Cloud Token: {}", tokenResponse);
             this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now

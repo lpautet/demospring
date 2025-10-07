@@ -107,7 +107,8 @@ public class SalesforceService {
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
                     String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
-                    throw new IOException("Data Cloud query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
+                    throw new IOException("Data Cloud query failed with status %s: %s : %s"
+                            .formatted(response.getStatusCode(), response.getStatusText(), errorBody));
                 }).toEntity(DataCloudIngestResponse.class);
 
         if (!responseEntity.getBody().accepted()) {

@@ -2,7 +2,6 @@ package net.pautet.softs.demospring.service;
 
 import net.pautet.softs.demospring.entity.Message;
 import net.pautet.softs.demospring.repository.MessageRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.scheduling.annotation.Scheduled;
