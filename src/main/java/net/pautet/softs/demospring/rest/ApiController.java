@@ -94,10 +94,9 @@ public class ApiController {
                 String responseBody = new String(response.getBody().readAllBytes());
 
                 // Try to parse the error response using injected ObjectMapper
-                ObjectMapper mapper = objectMapper;
                 NetatmoErrorResponse error;
                 try {
-                    error = mapper.readValue(responseBody, NetatmoErrorResponse.class);
+                    error = objectMapper.readValue(responseBody, NetatmoErrorResponse.class);
                 } catch (Exception e) {
                     // If parsing fails, propagate as IOException with original body (already consumed)
                     throw new IOException("Error parsing Netatmo error response (" + status + "): " + responseBody);
@@ -105,6 +104,7 @@ public class ApiController {
 
                 // Netatmo access token expired codes: 3 or 26
                 if (error.error().code() == 3 || error.error().code() == 26) {
+                    log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
                     String newToken = refreshToken(user);
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
