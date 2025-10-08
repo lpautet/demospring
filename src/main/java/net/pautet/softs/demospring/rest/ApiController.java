@@ -11,7 +11,6 @@ import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.SalesforceService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
@@ -105,7 +104,12 @@ public class ApiController {
 
                 // Netatmo access token expired codes: 3 or 26
                 if (error.error().code() == 3 || error.error().code() == 26) {
-                    log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
+                    if (status.isSameCodeAs(HttpStatus.FORBIDDEN) && error.error().code() == 3) {
+                        // Access token expired
+                        log.info("Netatmo Access Token expiration detected, refreshing it...");
+                    } else {
+                        log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
+                    }
                     String newToken = refreshToken(user);
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
@@ -152,8 +156,9 @@ public class ApiController {
                         .build().post().uri("/oauth2/token").body(formData)
                         .retrieve()
                         .body(NetatmoTokenResponse.class);
-                log.warn("Netatmo Token Response: " + tokenResponse);
-                messageService.info("Netatmo Token refreshed!");
+                log.debug("Netatmo Token Response: " + tokenResponse);
+                log.info("Netatmo Token refreshed.");
+                messageService.info("Netatmo Token refreshed.");
                 if (tokenResponse == null) {
                     throw new IOException("Unexpected null tokenResponse!");
                 }
