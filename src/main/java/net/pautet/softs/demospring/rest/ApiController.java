@@ -88,7 +88,6 @@ public class ApiController {
         public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, @NonNull ClientHttpRequestExecution execution) throws IOException {
             ClientHttpResponse response = execution.execute(request, body);
             HttpStatusCode status = response.getStatusCode();
-            log.warn("Intercepted HTTP client error with status code " + status);
 
             // Handle 401/403 only; avoid reading body for other statuses
             if (status.isSameCodeAs(HttpStatus.UNAUTHORIZED) || status.isSameCodeAs(HttpStatus.FORBIDDEN)) {
@@ -113,13 +112,17 @@ public class ApiController {
                     request.getHeaders().set("Authorization", "Bearer " + newToken);
                     return execution.execute(request, body);
                 } else {
+                    log.error("Intercepted HTTP {} client error code {} {}", status, error.error().code(), error.error().message());
                     HttpStatus httpStatus = HttpStatus.resolve(status.value());
                     if (httpStatus == null) {
                         httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
                     }
                     throw new NetatmoApiException(error, httpStatus);
                 }
+            } else if (status.isSameCodeAs(HttpStatus.OK)) {
+                log.warn("Intercepted HTTP client error with status code " + status);
             }
+
             return response;
         }
 
