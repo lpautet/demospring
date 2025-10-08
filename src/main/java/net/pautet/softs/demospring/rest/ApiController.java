@@ -202,13 +202,13 @@ public class ApiController {
 
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
-    public ResponseEntity<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+    public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
         log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
                 .retrieve()
-                .toEntity(String.class);
+                .body(String.class);
     }
 
     @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + T(java.util.Arrays).toString(#types)", unless = "#result == null")
