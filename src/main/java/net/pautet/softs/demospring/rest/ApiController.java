@@ -6,6 +6,7 @@ import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.*;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
+import net.pautet.softs.demospring.exception.NetatmoRateLimitException;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.RedisUserService;
@@ -119,8 +120,22 @@ public class ApiController {
                     }
                     throw new NetatmoApiException(error, httpStatus);
                 }
-            } else if (!status.isSameCodeAs(HttpStatus.OK)) {
-                log.warn("Intercepted HTTP client error with status code " + status);
+            } else
+            if (status.isSameCodeAs(HttpStatus.TOO_MANY_REQUESTS)) {
+                // Handle rate limiting (429) - throw exception to be handled globally
+                String responseBody = new String(response.getBody().readAllBytes());
+                // Try to parse the error response using injected ObjectMapper
+                NetatmoErrorResponse error;
+                try {
+                    error = objectMapper.readValue(responseBody, NetatmoErrorResponse.class);
+                } catch (Exception e) {
+                    // If parsing fails, propagate as IOException with original body (already consumed)
+                    throw new IOException("Error parsing Netatmo error response (" + status + "): " + responseBody);
+                }
+                log.warn("Rate limited (429) {}/{} for {}", error.error().code(), error.error().message(), request.getURI());
+                throw new NetatmoRateLimitException("Downstream service rate limited: " + error.error().message());
+            } else if (!status.is2xxSuccessful()) {
+                log.error("Intercepted unexpected HTTP client error with status code {} for {}", status, request.getURI());
             }
 
             return response;
@@ -187,12 +202,13 @@ public class ApiController {
 
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
-    public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+    public ResponseEntity<String> getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
         log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
-                .retrieve().body(String.class);
+                .retrieve()
+                .toEntity(String.class);
     }
 
     @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + T(java.util.Arrays).toString(#types)", unless = "#result == null")

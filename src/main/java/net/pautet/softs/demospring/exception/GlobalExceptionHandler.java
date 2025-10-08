@@ -24,4 +24,11 @@ public class GlobalExceptionHandler {
         log.warn("Netatmo exception received: {} {}", e.getError().error().code(), e.getError().error().message());
         return ResponseEntity.status(e.getStatus()).body(e.getError());
     }
+
+    @ExceptionHandler(NetatmoRateLimitException.class)
+    public ResponseEntity<String> handleRateLimitException(NetatmoRateLimitException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header("Retry-After", "60")
+                .body(e.getMessage());
+    }
 }
