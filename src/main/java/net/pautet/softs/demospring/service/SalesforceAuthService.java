@@ -129,7 +129,8 @@ public class SalesforceAuthService {
             if (tokenResponse == null || tokenResponse.accessToken() == null) {
                 throw new IOException("Unexpected TokenResponse for Salesforce token: " + tokenResponse);
             } else {
-                log.warn("Salesforce access token response: {} ", tokenResponse);
+                log.debug("Salesforce access token response: {} ", tokenResponse);
+                log.info("Got new Salesforce API token.");
                 messageService.info("Got new Salesforce API token.");
                 this.salesforceCredentials = new SalesforceCredentials(this.salesforceCredentials, salesforceTokenExpiresAt, tokenResponse);
                 //getSalesforceUser();
@@ -172,7 +173,8 @@ public class SalesforceAuthService {
                 if (tokenResponse.accessToken() == null || tokenResponse.expiresIn() == null) {
                     throw new IOException("Unexpected Data Cloud access token response: " + tokenResponse);
                 }
-                log.warn("Data Cloud Token: {}", tokenResponse);
+                log.debug("Data Cloud Token: {}", tokenResponse);
+                log.info("Got new DataCloud token.");
                 messageService.info("Got new DataCloud token.");
                 this.salesforceCredentials = new SalesforceCredentials(salesforceCredentials, tokenResponse);
             } catch (UnrecognizedPropertyException upe) {
