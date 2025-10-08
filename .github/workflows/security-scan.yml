@@ -25,7 +25,7 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./webapp
-      run: npm ci
+      run: npm install
 
     - name: Run npm audit
       working-directory: ./webapp
