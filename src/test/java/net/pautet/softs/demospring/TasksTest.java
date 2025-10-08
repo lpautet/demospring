@@ -1,7 +1,7 @@
 package net.pautet.softs.demospring;
 
 import net.pautet.softs.demospring.entity.Message;
-import net.pautet.softs.demospring.repository.MessageRepository;
+import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
 import net.pautet.softs.demospring.service.SchedulingService;
@@ -22,17 +22,17 @@ class TasksTest {
 
     private SalesforceService salesforceService;
     private NetatmoService netatmoService;
-    private MessageRepository messageRepository;
     private SchedulingService schedulingService;
+    private MessageService messageService;
     private Tasks tasks;
 
     @BeforeEach
     void setUp() {
         salesforceService = mock(SalesforceService.class);
         netatmoService = mock(NetatmoService.class);
-        messageRepository = mock(MessageRepository.class);
         schedulingService = mock(SchedulingService.class);
-        tasks = new Tasks(salesforceService, netatmoService, messageRepository, schedulingService);
+        messageService = mock(MessageService.class);
+        tasks = new Tasks(salesforceService, netatmoService, schedulingService, messageService);
     }
 
     @Test
@@ -52,7 +52,8 @@ class TasksTest {
         // Assert
         verify(salesforceService).pushToDataCloud(metrics);
         verify(schedulingService).updateNetatmoToDataCloudExecutionTime();
-        verify(messageRepository, never()).save(any());
+        verify(messageService, never()).info(any());
+        verify(messageService, never()).error(any());
     }
 
     @Test
@@ -66,15 +67,8 @@ class TasksTest {
 
         // Assert
         verify(salesforceService, never()).pushToDataCloud(any());
-        verify(schedulingService, never()).updateNetatmoToDataCloudExecutionTime();
-        
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(messageRepository).save(messageCaptor.capture());
-        
-        Message savedMessage = messageCaptor.getValue();
-        assertEquals("Salesforce configuration not available, skipping data push to Data Cloud", savedMessage.getMessage());
-        assertEquals("info", savedMessage.getSeverity());
-        assertEquals("server", savedMessage.getSource());
+        verify(schedulingService).updateNetatmoToDataCloudExecutionTime();
+        verify(messageService).info("Salesforce configuration not available, skipping data push to Data Cloud");
     }
 
     @Test
@@ -88,7 +82,8 @@ class TasksTest {
         // Assert
         verify(salesforceService, never()).pushToDataCloud(any());
         verify(schedulingService, never()).updateNetatmoToDataCloudExecutionTime();
-        verify(messageRepository, never()).save(any());
+        verify(messageService, never()).info(any());
+        verify(messageService, never()).error(any());
     }
 
     @Test
@@ -103,15 +98,8 @@ class TasksTest {
 
         // Assert
         verify(salesforceService, never()).pushToDataCloud(any());
-        verify(schedulingService, never()).updateNetatmoToDataCloudExecutionTime();
-        
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(messageRepository).save(messageCaptor.capture());
-        
-        Message savedMessage = messageCaptor.getValue();
-        assertEquals("Error pushing to Data Cloud: Test exception", savedMessage.getMessage());
-        assertEquals("error", savedMessage.getSeverity());
-        assertEquals("server", savedMessage.getSource());
+        verify(schedulingService).updateNetatmoToDataCloudExecutionTime();
+        verify(messageService).error("Error pushing to Data Cloud: Test exception");
     }
 
     @Test
