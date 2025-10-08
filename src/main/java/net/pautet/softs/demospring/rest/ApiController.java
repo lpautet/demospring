@@ -119,7 +119,7 @@ public class ApiController {
                     }
                     throw new NetatmoApiException(error, httpStatus);
                 }
-            } else if (status.isSameCodeAs(HttpStatus.OK)) {
+            } else if (!status.isSameCodeAs(HttpStatus.OK)) {
                 log.warn("Intercepted HTTP client error with status code " + status);
             }
 

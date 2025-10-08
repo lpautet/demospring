@@ -30,11 +30,11 @@ public record SalesforceConfig (
                 loginUrl,
                 sessionTimeout,
                 connectorName,
-                generatePrivateKey()
+                loadPrivateKey()
         );
     }
 
-    private static PrivateKey generatePrivateKey() throws InvalidKeySpecException, NoSuchAlgorithmException {
+    private static PrivateKey loadPrivateKey() throws InvalidKeySpecException, NoSuchAlgorithmException {
         if (System.getenv("SF_PRIVATE_KEY") == null) {
             log.warn("SF_PRIVATE_KEY not found in environment variables. Salesforce Data Cloud integration will be disabled.");
             return null;
