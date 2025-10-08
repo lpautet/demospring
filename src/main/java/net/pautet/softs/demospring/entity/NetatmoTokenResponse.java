@@ -1,9 +1,9 @@
 package net.pautet.softs.demospring.entity;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-@JsonIgnoreProperties(ignoreUnknown = false)
+import java.util.List;
+
 public record NetatmoTokenResponse(
         @JsonAlias("access_token")
         String accessToken,
@@ -14,6 +14,6 @@ public record NetatmoTokenResponse(
         @JsonAlias("refresh_token")
         String refreshToken,
 
-        String[] scope
+        List<String> scope
 ) {
 }

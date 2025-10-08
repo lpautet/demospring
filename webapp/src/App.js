@@ -732,8 +732,13 @@ function App() {
         });
 
         if (response.status === 403) {
-            const errorData = await response.json();
-            addMessage(`Netatmo API Error (${errorData.code}): ${errorData.message}`, 'error');
+            addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
+            const tokenId = localStorage.getItem("tokenId");
+            if (tokenId) {
+                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
+            } else {
+                addMessage(`No tokenId found. Please sign up again.`, 'error');
+            }
             return;
         }
 
@@ -818,6 +823,17 @@ function App() {
                 "Authorization": "Bearer " + sessionStorage.getItem("token")
             }
         });
+
+        if (response.status === 403) {
+            addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
+            const tokenId = localStorage.getItem("tokenId");
+            if (tokenId) {
+                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
+            } else {
+                addMessage(`No tokenId found. Please sign up again.`, 'error');
+            }
+            return;
+        }
 
         if (response.status !== 200) {
             addMessage(`homestatus: ${response.status} ${response.statusText}`, 'error');
@@ -912,7 +928,7 @@ function App() {
 
         const endTime = performance.now();
         const duration = (endTime - startTime) / 1000;
-        if (duration > 1) {
+        if (duration > 2) {
             addMessage(`Slow update in ${duration.toFixed(2)}s with ${moduleUpdates.size} modules`, 'info');
         }
     }

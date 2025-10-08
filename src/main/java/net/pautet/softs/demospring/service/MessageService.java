@@ -23,6 +23,12 @@ public class MessageService {
                 "server"));
     }
 
+    public void error(String message) {
+        messageRepository.save(new Message(message,
+                "ERROR",
+                "server"));
+    }
+
     public List<Message> getAllMessages() {
         return messageRepository.findAll();
     }

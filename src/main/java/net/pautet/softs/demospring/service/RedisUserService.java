@@ -1,26 +1,20 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.entity.User;
 import net.pautet.softs.demospring.repository.RedisUserRepository;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
 public class RedisUserService implements UserDetailsService {
 
     private final RedisUserRepository userRepository; // 💡 Inject the Repository
-
-    private static final String USER_KEY_PREFIX = "user:";
-    private static final long USER_EXPIRY_DAYS = 30;
 
     // Constructor is now much cleaner
     public RedisUserService(RedisUserRepository userRepository) {

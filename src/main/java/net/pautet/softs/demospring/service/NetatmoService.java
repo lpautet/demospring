@@ -45,7 +45,7 @@ public class NetatmoService {
     public static final String NOISE = "Noise";
     public static final String RAIN = "Rain";
     private final NetatmoConfig netatmoConfig;
-    private final TokenSet currentToken;
+    private final TokenSet tokenSet;
     private final AppConfig appConfig;
     private final ObjectMapper objectMapper = new ObjectMapper()
             .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
@@ -53,12 +53,12 @@ public class NetatmoService {
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
 
     private RestClient createApiWebClient() throws IOException {
-        if (this.currentToken.getAccessToken() == null || this.currentToken.getExpiresAt() <= System.currentTimeMillis()) {
+        if (this.tokenSet.getAccessToken() == null || this.tokenSet.getExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new NetAtmo Access Token");
             refreshToken();
         }
         return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
-                .defaultHeader("Authorization", "Bearer " + this.currentToken.getAccessToken())
+                .defaultHeader("Authorization", "Bearer " + this.tokenSet.getAccessToken())
                 .build();
     }
 
@@ -66,23 +66,23 @@ public class NetatmoService {
         this.appConfig = appConfig;
         this.netatmoConfig = netatmoConfig;
         this.redisTemplate = redisTemplate;
-        this.currentToken = new TokenSet();
+        this.tokenSet = new TokenSet();
         String loaded = "";
         // Load initial refresh token from Redis if available, otherwise use the property
         String redisValue = redisTemplate.opsForValue().get("netatmo:refresh_token");
         if (redisValue != null) {
-            this.currentToken.setRefreshToken(redisValue);
+            this.tokenSet.setRefreshToken(redisValue);
             loaded += " RefreshToken";
         }
         redisValue = redisTemplate.opsForValue().get("netatmo:access_token");
         if (redisValue != null) {
-            this.currentToken.setAccessToken(redisValue);
+            this.tokenSet.setAccessToken(redisValue);
             loaded += " AccessToken";
         }
         redisValue = redisTemplate.opsForValue().get("netatmo:expires_at");
         if (redisValue != null) {
-            this.currentToken.setExpiresAt(Long.parseLong(redisValue));
-            loaded += " expires: " + new Date(this.currentToken.getExpiresAt());
+            this.tokenSet.setExpiresAt(Long.parseLong(redisValue));
+            loaded += " expires: " + new Date(this.tokenSet.getExpiresAt());
         }
         if (!loaded.isEmpty()) {
             log.info("Loaded from redis: {}", loaded);
@@ -115,30 +115,26 @@ public class NetatmoService {
         if (tokenResponse == null) {
             throw new IOException("Failed to exchange code for tokens !");
         }
-
-        // Save refresh token to Redis
-        saveTokens(tokenResponse);
-
         return tokenResponse;
     }
 
     // Save refresh token to Redis
     public void saveTokens(NetatmoTokenResponse tokenResponse) {
-        this.currentToken.update(tokenResponse);
-        redisTemplate.opsForValue().set("netatmo:refresh_token", currentToken.getRefreshToken());
-        redisTemplate.opsForValue().set("netatmo:access_token", currentToken.getAccessToken());
-        redisTemplate.opsForValue().set("netatmo:expires_at", Long.toString(currentToken.getExpiresAt()));
+        this.tokenSet.update(tokenResponse);
+        redisTemplate.opsForValue().set("netatmo:refresh_token", tokenSet.getRefreshToken());
+        redisTemplate.opsForValue().set("netatmo:access_token", tokenSet.getAccessToken());
+        redisTemplate.opsForValue().set("netatmo:expires_at", Long.toString(tokenSet.getExpiresAt()));
     }
 
     private void refreshToken() throws IOException {
-        if (this.currentToken.getRefreshToken() == null) {
+        if (this.tokenSet.getRefreshToken() == null) {
             throw new IllegalStateException("No Netatmo Refresh Token !");
         }
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "refresh_token");
         formData.add("client_id", netatmoConfig.clientId());
         formData.add("client_secret", netatmoConfig.clientSecret());
-        formData.add("refresh_token", currentToken.getRefreshToken());
+        formData.add("refresh_token", tokenSet.getRefreshToken());
         NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
                 .build().post().uri("/oauth2/token").body(formData)
                 .retrieve()
@@ -168,6 +164,7 @@ public class NetatmoService {
             String responseBody = createApiWebClient().get().uri("/getstationsdata")
                     .retrieve()
                     .onStatus(status -> status == HttpStatus.FORBIDDEN, (request, response) -> {
+                        log.warn("getstationdata failed with FORBIDDEN");
                         String errorBody = new String(response.getBody().readAllBytes());
                         NetatmoErrorResponse error;
                         try {

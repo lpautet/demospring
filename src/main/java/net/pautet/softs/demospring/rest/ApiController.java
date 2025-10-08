@@ -7,10 +7,11 @@ import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.*;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.service.MessageService;
-import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.NetatmoService;
+import net.pautet.softs.demospring.service.RedisUserService;
 import net.pautet.softs.demospring.service.SalesforceService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -28,16 +29,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.view.RedirectView;
-import org.springframework.cache.annotation.Cacheable;
 
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_API_URI;
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
@@ -57,7 +55,6 @@ public class ApiController {
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
 
-    @Autowired
     public ApiController(NetatmoConfig netatmoConfig,
                          RedisUserService redisUserService,
                          NetatmoService netatmoService,
@@ -91,6 +88,8 @@ public class ApiController {
         public @NonNull ClientHttpResponse intercept(@NonNull HttpRequest request, @NonNull byte[] body, @NonNull ClientHttpRequestExecution execution) throws IOException {
             ClientHttpResponse response = execution.execute(request, body);
             HttpStatusCode status = response.getStatusCode();
+            log.warn("Intercepted HTTP client error with status code " + status);
+
             // Handle 401/403 only; avoid reading body for other statuses
             if (status.isSameCodeAs(HttpStatus.UNAUTHORIZED) || status.isSameCodeAs(HttpStatus.FORBIDDEN)) {
                 String responseBody = new String(response.getBody().readAllBytes());
@@ -246,6 +245,8 @@ public class ApiController {
         }
 
         NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
+        // Save refresh token to Redis
+        netatmoService.saveTokens(tokenResponse);
         netatmoService.getNetatmoMetrics();
         return "Netatmo tokens retrieved successfully: " + tokenResponse.toString() + "<br>Refresh token saved";
     }

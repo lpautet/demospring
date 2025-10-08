@@ -1,12 +1,10 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.ConnectorSchemaProvider;
 import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.entity.DataCloudIngestResponse;
 import net.pautet.softs.demospring.entity.SalesforceUserInfo;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -15,11 +13,8 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.text.MessageFormat;
+import java.util.*;
 
 import static net.pautet.softs.demospring.service.NetatmoService.*;
 
@@ -94,9 +89,8 @@ public class SalesforceService {
             data.add(readings);
         }
         payload.put("data", data);
-
-        String schemaName = connectorSchemaProvider.schemaName();
-        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuthService.createDataCloudApiClient().post().uri("/api/v1/ingest/sources/"+salesforceConfig.connectorName()+"/"+schemaName).contentType(MediaType.APPLICATION_JSON).body(payload)
+        String uri = MessageFormat.format("/api/v1/ingest/sources/{0}/{1}", salesforceConfig.connectorName(), connectorSchemaProvider.schemaName());
+        ResponseEntity<DataCloudIngestResponse> responseEntity = salesforceAuthService.createDataCloudApiClient().post().uri(uri).contentType(MediaType.APPLICATION_JSON).body(payload)
                 .retrieve().onStatus(status -> status != HttpStatus.ACCEPTED, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
                     String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
@@ -105,11 +99,12 @@ public class SalesforceService {
                 }).toEntity(DataCloudIngestResponse.class);
 
         if (!responseEntity.getBody().accepted()) {
+            messageService.error("Data Cloud did not accept ingested data !: " + responseEntity.getBody());
             throw new IOException("Data Cloud did not accept ingested data !: " + responseEntity.getBody());
+        } else {
+            log.info("Data Cloud accepted ingest data");
         }
 
-        log.info("Data Cloud accepted ingest data");
-        messageService.info("Pushed to DataCloud successfully.");
     }
 
     private String safeString(Object value) {

@@ -33,11 +33,11 @@ public class AuthController {
     public static final String NETATMO_SCOPE = "read_station read_thermostat";
     public static final String NETATMO_API_URI = "https://api.netatmo.com";
 
-    private NetatmoConfig netatmoConfig;
-    private JWTUtil jwtUtil;
-    private RedisUserService redisUserService;
-    private AppConfig appConfig;
-    private NetatmoService netatmoService;
+    private final NetatmoConfig netatmoConfig;
+    private final JWTUtil jwtUtil;
+    private final RedisUserService redisUserService;
+    private final AppConfig appConfig;
+    private final NetatmoService netatmoService;
 
     private final RestClient tokenRestClient = RestClient.builder().baseUrl(NETATMO_API_URI).build();
 
@@ -59,18 +59,19 @@ public class AuthController {
 
     @GetMapping(CALLBACK_ATMO)
     public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) throws IOException {
-        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
-        formData.add("grant_type", "authorization_code");
-        formData.add("client_id", netatmoConfig.clientId());
-        formData.add("client_secret", netatmoConfig.clientSecret());
-        formData.add("code", code);
-        formData.add("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT);
-        formData.add("scope", NETATMO_SCOPE);
-        NetatmoTokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
-                .retrieve().body(NetatmoTokenResponse.class);
-        if (tokenResponse == null) {
-            throw new IOException("Unexpected null tokenResponse!");
-        }
+        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
+//        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+//        formData.add("grant_type", "authorization_code");
+//        formData.add("client_id", netatmoConfig.clientId());
+//        formData.add("client_secret", netatmoConfig.clientSecret());
+//        formData.add("code", code);
+//        formData.add("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT);
+//        formData.add("scope", NETATMO_SCOPE);
+//        NetatmoTokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
+//                .retrieve().body(NetatmoTokenResponse.class);
+//        if (tokenResponse == null) {
+//            throw new IOException("Unexpected null tokenResponse!");
+//        }
         User user = redisUserService.findByUsername(state);
         user.setAccessToken(tokenResponse.accessToken());
         user.setRefreshToken(tokenResponse.refreshToken());
