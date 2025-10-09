@@ -28,7 +28,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NetatmoRateLimitException.class)
     public ResponseEntity<String> handleRateLimitException(NetatmoRateLimitException e) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .header("Retry-After", "60")
-                .body(e.getMessage());
+                .body("Netatmo API rate limit exceeded: " + e.getMessage());
+    }
+
+    @ExceptionHandler(NetatmoTimeoutException.class)
+    public ResponseEntity<String> handleTimeoutException(NetatmoTimeoutException e) {
+        return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body("Netatmo API request timed out: " + e.getMessage());
     }
 }

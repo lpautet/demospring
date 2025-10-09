@@ -60,18 +60,6 @@ public class AuthController {
     @GetMapping(CALLBACK_ATMO)
     public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) throws IOException {
         NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
-//        MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
-//        formData.add("grant_type", "authorization_code");
-//        formData.add("client_id", netatmoConfig.clientId());
-//        formData.add("client_secret", netatmoConfig.clientSecret());
-//        formData.add("code", code);
-//        formData.add("redirect_uri", appConfig.redirectUri() + REDIRECT_ENDPOINT);
-//        formData.add("scope", NETATMO_SCOPE);
-//        NetatmoTokenResponse tokenResponse = tokenRestClient.post().uri("/oauth2/token").body(formData)
-//                .retrieve().body(NetatmoTokenResponse.class);
-//        if (tokenResponse == null) {
-//            throw new IOException("Unexpected null tokenResponse!");
-//        }
         User user = redisUserService.findByUsername(state);
         user.setAccessToken(tokenResponse.accessToken());
         user.setRefreshToken(tokenResponse.refreshToken());

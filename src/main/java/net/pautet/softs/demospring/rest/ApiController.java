@@ -7,6 +7,7 @@ import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.*;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.exception.NetatmoRateLimitException;
+import net.pautet.softs.demospring.exception.NetatmoTimeoutException;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.RedisUserService;
@@ -124,8 +125,7 @@ public class ApiController {
                     }
                     throw new NetatmoApiException(error, httpStatus);
                 }
-            } else
-            if (status.isSameCodeAs(HttpStatus.TOO_MANY_REQUESTS)) {
+            } else if (status.isSameCodeAs(HttpStatus.TOO_MANY_REQUESTS)) {
                 // Handle rate limiting (429) - throw exception to be handled globally
                 String responseBody = new String(response.getBody().readAllBytes());
                 // Try to parse the error response using injected ObjectMapper
@@ -138,8 +138,12 @@ public class ApiController {
                 }
                 log.warn("Rate limited (429) {}/{} for {}", error.error().code(), error.error().message(), request.getURI());
                 throw new NetatmoRateLimitException("Downstream service rate limited: " + error.error().message());
-            } else if (!status.is2xxSuccessful()) {
-                log.error("Intercepted unexpected HTTP client error with status code {} for {}", status, request.getURI());
+            } else if (status.isSameCodeAs(HttpStatus.GATEWAY_TIMEOUT)) {
+                log.warn("Netatmo request gateway timeout (504) for {}", request.getURI());
+                throw new NetatmoTimeoutException("Downstream Netatmo service timeout");
+            }
+            else if (!status.is2xxSuccessful()) {
+                log.error("Intercepted unexpected HTTP client response with status code {} for {}", status, request.getURI());
             }
 
             return response;
@@ -156,7 +160,7 @@ public class ApiController {
                         .build().post().uri("/oauth2/token").body(formData)
                         .retrieve()
                         .body(NetatmoTokenResponse.class);
-                log.debug("Netatmo Token Response: " + tokenResponse);
+                log.debug("Netatmo Token Response: {}", tokenResponse);
                 log.info("Netatmo Token refreshed.");
                 messageService.info("Netatmo Token refreshed.");
                 if (tokenResponse == null) {
@@ -173,22 +177,17 @@ public class ApiController {
         }
     }
 
-    private RestClient createApiWebClient(Principal principal) {
-        try {
-            User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-            if (user == null || user.getAccessToken() == null) {
-                log.error("User or access token is null. User: {}, AccessToken: {}", user, user != null ? user.getAccessToken() : null);
-                throw new IllegalStateException("User or access token is null");
-            }
-            log.debug("Creating API web client with access token: {}", user.getAccessToken());
-            return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
-                    .defaultHeader("Authorization", "Bearer " + user.getAccessToken())
-                    .requestInterceptor(new RefreshTokenInterceptor(principal))
-                    .build();
-        } catch (Exception e) {
-            log.error("Error creating API web client: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to create API web client: " + e.getMessage(), e);
+    private RestClient createNetatmoApiWebClient(Principal principal) {
+        User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
+        if (user == null || user.getAccessToken() == null) {
+            log.error("User or access token is null. User: {}", user);
+            throw new IllegalStateException("User or access token is null");
         }
+        log.debug("Creating API web client with access token: {}", user.getAccessToken());
+        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
+                .defaultHeaders(headers -> headers.setBearerAuth(user.getAccessToken()))
+                .requestInterceptor(new RefreshTokenInterceptor(principal))
+                .build();
     }
 
     @GetMapping("/whoami")
@@ -200,8 +199,8 @@ public class ApiController {
     @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) {
-       log.debug("Calling for homesdata: " + principal.getName());
-        return createApiWebClient(principal).get().uri("/homesdata")
+        log.debug("Calling for homesdata: " + principal.getName());
+        return createNetatmoApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
     }
 
@@ -209,7 +208,7 @@ public class ApiController {
     @GetMapping("/homestatus")
     public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
         log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
-        return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
+        return createNetatmoApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
                         .build())
                 .retrieve()
@@ -223,8 +222,8 @@ public class ApiController {
                              @RequestParam("module_id") String moduleId,
                              @RequestParam("scale") String scale,
                              @RequestParam("type") String[] types) {
-       log.debug("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types) );
-        return createApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
+        log.debug("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types));
+        return createNetatmoApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)
                         .queryParam("module_id", moduleId)
                         .queryParam("scale", scale)
