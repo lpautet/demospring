@@ -118,9 +118,11 @@ public class NetatmoService {
                 try {
                     NetatmoBadRequestResponse netatmoBadRequestResponse = objectMapper.readValue(response.getBody(), NetatmoBadRequestResponse.class);
                     if (netatmoBadRequestResponse.error().equals("invalid grant")) {
+                        log.error("URI Mismatch in exchanging Code for Tokens redirect_uri={}", redirectUri);
                         throw new NetatmoBadRequestException("URI Mismatch in exchanging Code for Tokens");
                     }
                 } catch (IOException e) {
+                    log.error("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted( response.getBody()));
                     throw new IOException("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted( response.getBody()));
                 }
             }
@@ -133,6 +135,7 @@ public class NetatmoService {
             }
             return tokenResponse;
         } catch (Exception e) {
+            log.error("Cannot get token from access code status=200, with unexpected body: %s".formatted( response.getBody()));
             throw new IOException("Cannot get token from access code status=200, with unexpected body: %s".formatted( response.getBody()));
         }
     }
