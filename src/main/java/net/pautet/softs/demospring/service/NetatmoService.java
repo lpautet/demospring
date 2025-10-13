@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
+import net.pautet.softs.demospring.entity.NetatmoBadRequestResponse;
 import net.pautet.softs.demospring.entity.NetatmoTokenResponse;
 import net.pautet.softs.demospring.entity.TokenSet;
 import net.pautet.softs.demospring.entity.NetatmoErrorResponse;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
+import net.pautet.softs.demospring.exception.NetatmoBadRequestException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -101,21 +103,38 @@ public class NetatmoService {
     }
 
     // Exchange authorization code for access and refresh tokens
-    public NetatmoTokenResponse exchangeCodeForTokens(String code) throws IOException {
+    public NetatmoTokenResponse exchangeCodeForTokens(String code, String redirectUri) throws IOException {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "authorization_code");
         formData.add("client_id", netatmoConfig.clientId());
         formData.add("client_secret", netatmoConfig.clientSecret());
         formData.add("code", code);
-        formData.add("redirect_uri", appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT);
+        formData.add("redirect_uri", redirectUri);
         formData.add("scope", NETATMO_SCOPE);
         ResponseEntity<String> response = RestClient.builder().baseUrl(NETATMO_API_URI).build().post().uri("/oauth2/token").body(formData)
                 .retrieve().toEntity(String.class);
-        NetatmoTokenResponse tokenResponse = objectMapper.readValue(response.getBody(), NetatmoTokenResponse.class);
-        if (tokenResponse == null) {
-            throw new IOException("Failed to exchange code for tokens !");
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            if (response.getStatusCode().isSameCodeAs(HttpStatus.BAD_REQUEST)) {
+                try {
+                    NetatmoBadRequestResponse netatmoBadRequestResponse = objectMapper.readValue(response.getBody(), NetatmoBadRequestResponse.class);
+                    if (netatmoBadRequestResponse.error().equals("invalid grant")) {
+                        throw new NetatmoBadRequestException("URI Mismatch in exchanging Code for Tokens");
+                    }
+                } catch (IOException e) {
+                    throw new IOException("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted( response.getBody()));
+                }
+            }
+            throw new IOException("Cannot get token from access code status=%s: %s".formatted(response.getStatusCode(), response.getBody()));
         }
-        return tokenResponse;
+        try {
+            NetatmoTokenResponse tokenResponse = objectMapper.readValue(response.getBody(), NetatmoTokenResponse.class);
+            if (tokenResponse == null) {
+                throw new IOException("Failed to exchange code for tokens !");
+            }
+            return tokenResponse;
+        } catch (Exception e) {
+            throw new IOException("Cannot get token from access code status=200, with unexpected body: %s".formatted( response.getBody()));
+        }
     }
 
     // Save refresh token to Redis

@@ -276,7 +276,7 @@ public class ApiController {
             return "Error: Invalid state parameter";
         }
 
-        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
+        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code, appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT);
         // Save refresh token to Redis
         netatmoService.saveTokens(tokenResponse);
         netatmoService.getNetatmoMetrics();

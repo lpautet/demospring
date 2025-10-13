@@ -2,18 +2,16 @@ package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
 import net.pautet.softs.demospring.config.AppConfig;
-import net.pautet.softs.demospring.entity.NetatmoTokenResponse;
-import net.pautet.softs.demospring.security.JWTUtil;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.AuthResponse;
+import net.pautet.softs.demospring.entity.NetatmoTokenResponse;
 import net.pautet.softs.demospring.entity.SignupRequest;
 import net.pautet.softs.demospring.entity.User;
-import net.pautet.softs.demospring.service.RedisUserService;
+import net.pautet.softs.demospring.security.JWTUtil;
 import net.pautet.softs.demospring.service.NetatmoService;
+import net.pautet.softs.demospring.service.RedisUserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -39,8 +37,6 @@ public class AuthController {
     private final AppConfig appConfig;
     private final NetatmoService netatmoService;
 
-    private final RestClient tokenRestClient = RestClient.builder().baseUrl(NETATMO_API_URI).build();
-
     @GetMapping("/hello")
     public String getHello() {
         return "Hello, the time at the server is now " + new Date() + "\n";
@@ -56,10 +52,9 @@ public class AuthController {
                 .build().toUri();
         return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(uri).build();
     }
-
     @GetMapping(CALLBACK_ATMO)
     public ResponseEntity<String> atmocb(@RequestParam String state, @RequestParam String code) throws IOException {
-        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code);
+        NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code, appConfig.redirectUri() + REDIRECT_ENDPOINT);
         User user = redisUserService.findByUsername(state);
         user.setAccessToken(tokenResponse.accessToken());
         user.setRefreshToken(tokenResponse.refreshToken());
