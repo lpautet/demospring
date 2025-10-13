@@ -61,7 +61,7 @@ public class SalesforceService {
                 .retrieve().onStatus(status -> status != HttpStatus.OK, (request, response) -> {
                     // For any other status, throw an exception with the response body as a utf-8 string
                     String errorBody = new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8);
-                    log.error(errorBody);
+                    log.error("fetchDataCloudData: {}", errorBody);
                     throw new IOException("Salesforce query failed with status " + response.getStatusCode() + ": " + response.getStatusText() + " : " + errorBody);
                 }).toEntity(String.class);
 

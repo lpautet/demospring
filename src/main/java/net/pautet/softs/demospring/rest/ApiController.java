@@ -8,6 +8,7 @@ import net.pautet.softs.demospring.entity.*;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.exception.NetatmoRateLimitException;
 import net.pautet.softs.demospring.exception.NetatmoTimeoutException;
+import net.pautet.softs.demospring.exception.NetatmoUnthorizedException;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.RedisUserService;
@@ -104,10 +105,12 @@ public class ApiController {
                 }
 
                 // Netatmo access token expired codes: 3 or 26
-                if (error.error().code() == 3 || error.error().code() == 26) {
+                if (error.error().code() == 3 || error.error().code() == 2) {
                     if (status.isSameCodeAs(HttpStatus.FORBIDDEN) && error.error().code() == 3) {
                         // Access token expired
                         log.info("Netatmo Access Token expiration detected, refreshing it...");
+                    } else if (status.isSameCodeAs(HttpStatus.FORBIDDEN) && error.error().code() == 2) {
+                        log.warn("Netatmo Access Token is invalid, trying refresh...");
                     } else {
                         log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
                     }
@@ -141,8 +144,7 @@ public class ApiController {
             } else if (status.isSameCodeAs(HttpStatus.GATEWAY_TIMEOUT)) {
                 log.warn("Netatmo request gateway timeout (504) for {}", request.getURI());
                 throw new NetatmoTimeoutException("Downstream Netatmo service timeout");
-            }
-            else if (!status.is2xxSuccessful()) {
+            } else if (!status.is2xxSuccessful()) {
                 log.error("Intercepted unexpected HTTP client response with status code {} for {}", status, request.getURI());
             }
 
@@ -177,11 +179,14 @@ public class ApiController {
         }
     }
 
-    private RestClient createNetatmoApiWebClient(Principal principal) {
+    private RestClient createNetatmoApiWebClient(Principal principal) throws NetatmoUnthorizedException {
         User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
-        if (user == null || user.getAccessToken() == null) {
-            log.error("User or access token is null. User: {}", user);
-            throw new IllegalStateException("User or access token is null");
+        if (user == null) {
+            log.warn("Cannot create API client for Netatmo: user is null !");
+            throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user is null");
+        } else if (user.getAccessToken() == null) {
+            log.warn("Cannot create API client for Netamo: user access token is null. User: {}", user);
+            throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user access token is null");
         }
         log.debug("Creating API web client with access token: {}", user.getAccessToken());
         return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
@@ -198,7 +203,7 @@ public class ApiController {
 
     @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
     @GetMapping("/homesdata")
-    public String getHomesData(Principal principal) {
+    public String getHomesData(Principal principal) throws NetatmoUnthorizedException {
         log.debug("Calling for homesdata: " + principal.getName());
         return createNetatmoApiWebClient(principal).get().uri("/homesdata")
                 .retrieve().body(String.class);
@@ -206,7 +211,7 @@ public class ApiController {
 
     @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
     @GetMapping("/homestatus")
-    public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) {
+    public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) throws NetatmoUnthorizedException{
         log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
         return createNetatmoApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/homestatus")
                         .queryParam("home_id", homeId)
@@ -221,7 +226,7 @@ public class ApiController {
                              @RequestParam("device_id") String deviceId,
                              @RequestParam("module_id") String moduleId,
                              @RequestParam("scale") String scale,
-                             @RequestParam("type") String[] types) {
+                             @RequestParam("type") String[] types) throws NetatmoUnthorizedException {
         log.debug("Calling for getmeasure: " + principal.getName() + ":" + deviceId + ":" + moduleId + ":" + scale + ":" + Arrays.toString(types));
         return createNetatmoApiWebClient(principal).get().uri(uriBuilder -> uriBuilder.path("/getmeasure")
                         .queryParam("device_id", deviceId)

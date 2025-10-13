@@ -36,4 +36,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
                 .body("Netatmo API request timed out: " + e.getMessage());
     }
+
+    @ExceptionHandler(NetatmoUnthorizedException.class)
+    public ResponseEntity<String> handleUnauthorizedException(NetatmoUnthorizedException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("Netatmo API request unauthorized: " + e.getMessage());
+    }
 }
