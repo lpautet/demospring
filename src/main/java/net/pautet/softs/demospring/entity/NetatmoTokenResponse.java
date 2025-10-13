@@ -11,6 +11,9 @@ public record NetatmoTokenResponse(
         @JsonAlias("expires_in")
         Long expiresIn,
 
+        @JsonAlias("expire_in")
+        Long expireIn,
+
         @JsonAlias("refresh_token")
         String refreshToken,
 

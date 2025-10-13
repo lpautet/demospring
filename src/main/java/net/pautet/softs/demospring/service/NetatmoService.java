@@ -53,6 +53,7 @@ public class NetatmoService {
             .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
     private final StringRedisTemplate redisTemplate; // Injected Redis client
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
+    private final MessageService messageService;
 
     private RestClient createApiWebClient() throws IOException {
         if (this.tokenSet.getAccessToken() == null || this.tokenSet.getExpiresAt() <= System.currentTimeMillis()) {
@@ -64,7 +65,7 @@ public class NetatmoService {
                 .build();
     }
 
-    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate) {
+    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate, MessageService messageService) {
         this.appConfig = appConfig;
         this.netatmoConfig = netatmoConfig;
         this.redisTemplate = redisTemplate;
@@ -89,6 +90,7 @@ public class NetatmoService {
         if (!loaded.isEmpty()) {
             log.info("Loaded from redis: {}", loaded);
         }
+        this.messageService = messageService;
     }
 
     private void incrementRequestCount() {
@@ -122,8 +124,8 @@ public class NetatmoService {
                         throw new NetatmoBadRequestException("URI Mismatch in exchanging Code for Tokens");
                     }
                 } catch (IOException e) {
-                    log.error("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted( response.getBody()));
-                    throw new IOException("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted( response.getBody()));
+                    log.error("Cannot get token from access code status=BAD REQUEST, with unexpected body: {}", response.getBody());
+                    throw new IOException("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted(response.getBody()));
                 }
             }
             throw new IOException("Cannot get token from access code status=%s: %s".formatted(response.getStatusCode(), response.getBody()));
@@ -131,12 +133,14 @@ public class NetatmoService {
         try {
             NetatmoTokenResponse tokenResponse = objectMapper.readValue(response.getBody(), NetatmoTokenResponse.class);
             if (tokenResponse == null) {
-                throw new IOException("Failed to exchange code for tokens !");
+                throw new IOException("Cannot get token from access code status=200, null jSON response!");
             }
+            log.info("Netatmo Token refreshed, redirecting to {}", redirectUri);
+            messageService.info("Netatmo Token Refreshed");
             return tokenResponse;
         } catch (Exception e) {
-            log.error("Cannot get token from access code status=200, with unexpected body: %s".formatted( response.getBody()));
-            throw new IOException("Cannot get token from access code status=200, with unexpected body: %s".formatted( response.getBody()));
+            log.error("Cannot get token from access code status=200, with unexpected body: {}", response.getBody());
+            throw new IOException("Cannot get token from access code status=200, with unexpected body: %s".formatted(response.getBody()));
         }
     }
 
@@ -242,7 +246,7 @@ public class NetatmoService {
             if (rce.getCause() instanceof NetatmoApiException) {
                 throw (NetatmoApiException) rce.getCause();
             }
-            log.error("Error in getNetatmoMetrics: {}",rce.getMessage());
+            log.error("Error in getNetatmoMetrics: {}", rce.getMessage());
             throw rce;
         }
     }

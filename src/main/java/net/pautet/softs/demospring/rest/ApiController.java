@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.view.RedirectView;
 
@@ -110,6 +111,8 @@ public class ApiController {
                         // Access token expired
                         log.info("Netatmo Access Token expiration detected, refreshing it...");
                     } else if (status.isSameCodeAs(HttpStatus.FORBIDDEN) && error.error().code() == 2) {
+                        log.warn(request.getURI().toString());
+                        log.warn(request.getHeaders().get("Authorization").get(0));
                         log.warn("Netatmo Access Token is invalid, trying refresh...");
                     } else {
                         log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
@@ -153,6 +156,7 @@ public class ApiController {
 
         private String refreshToken(User user) throws IOException {
             try {
+                log.info("Refreshing Netatmo token for user {}, refresh token: {}", user.getUsername(), user.getRefreshToken());
                 MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
                 formData.add("grant_type", "refresh_token");
                 formData.add("client_id", netatmoConfig.clientId());
@@ -172,7 +176,12 @@ public class ApiController {
                 user.setRefreshToken(tokenResponse.refreshToken());
                 redisUserService.save(user);
                 return tokenResponse.accessToken();
-            } catch (Exception e) {
+            } catch (HttpClientErrorException.BadRequest bre) {
+                NetatmoBadRequestResponse errorResponse = bre.getResponseBodyAs(NetatmoBadRequestResponse.class);
+                log.error("Netatmo Bad Request: {}", errorResponse);
+                throw new IOException("Failed to refresh token: " + errorResponse.error());
+            }
+            catch (Exception e) {
                 log.error("Error refreshing token: {}", e.getMessage(), e);
                 throw new IOException("Failed to refresh token", e);
             }

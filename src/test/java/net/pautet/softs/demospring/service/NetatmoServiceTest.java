@@ -22,6 +22,7 @@ class NetatmoServiceTest {
     private NetatmoConfig netatmoConfig;
     private AppConfig appConfig;
     private StringRedisTemplate redisTemplate;
+    private MessageService messageService;
     private NetatmoService netatmoService;
     private RestClient restClient;
 
@@ -30,8 +31,9 @@ class NetatmoServiceTest {
         netatmoConfig = mock(NetatmoConfig.class);
         appConfig = mock(AppConfig.class);
         redisTemplate = mock(StringRedisTemplate.class);
+        messageService = mock(MessageService.class);
         restClient = mock(RestClient.class);
-        netatmoService = new NetatmoService(appConfig, netatmoConfig, redisTemplate);
+        netatmoService = new NetatmoService(appConfig, netatmoConfig, redisTemplate, messageService);
     }
 
     @Test

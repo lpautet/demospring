@@ -1,6 +1,7 @@
 package net.pautet.softs.demospring.rest;
 
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import net.pautet.softs.demospring.entity.AuthResponse;
@@ -23,6 +24,7 @@ import java.util.Date;
 @RestController
 @AllArgsConstructor
 @RequestMapping(AuthController.AUTH_ENDPOINTS_PREFIX)
+@Slf4j
 public class AuthController {
 
     static final String AUTH_ENDPOINTS_PREFIX = "/api/auth";
@@ -60,6 +62,8 @@ public class AuthController {
         user.setRefreshToken(tokenResponse.refreshToken());
         user.setExpiresAt(System.currentTimeMillis() + tokenResponse.expiresIn()*1000);
         redisUserService.save(user);
+        log.info(tokenResponse.toString());
+        log.info("New access/refresh tokens saved for user {}", user.getUsername());
         return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create("/")).build();
     }
 
