@@ -111,8 +111,6 @@ public class ApiController {
                         // Access token expired
                         log.info("Netatmo Access Token expiration detected, refreshing it...");
                     } else if (status.isSameCodeAs(HttpStatus.FORBIDDEN) && error.error().code() == 2) {
-                        log.warn(request.getURI().toString());
-                        log.warn(request.getHeaders().get("Authorization").get(0));
                         log.warn("Netatmo Access Token is invalid, trying refresh...");
                     } else {
                         log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
@@ -156,7 +154,6 @@ public class ApiController {
 
         private String refreshToken(User user) throws IOException {
             try {
-                log.info("Refreshing Netatmo token for user {}, refresh token: {}", user.getUsername(), user.getRefreshToken());
                 MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
                 formData.add("grant_type", "refresh_token");
                 formData.add("client_id", netatmoConfig.clientId());

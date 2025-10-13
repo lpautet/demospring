@@ -135,7 +135,7 @@ public class NetatmoService {
             if (tokenResponse == null) {
                 throw new IOException("Cannot get token from access code status=200, null jSON response!");
             }
-            log.info("Netatmo Token refreshed, redirecting to {}", redirectUri);
+            messageService.info("Netatmo Token Refreshed");
             messageService.info("Netatmo Token Refreshed");
             return tokenResponse;
         } catch (Exception e) {
