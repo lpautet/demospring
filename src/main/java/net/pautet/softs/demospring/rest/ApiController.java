@@ -201,7 +201,7 @@ public class ApiController {
         return ResponseEntity.ok(user);
     }
 
-    @Cacheable(value = "homesdata", key = "#principal.name", unless = "#result == null")
+    @Cacheable(value = "homesdata", key = "'homesdata'", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) throws NetatmoUnthorizedException {
         log.debug("Calling for homesdata: " + principal.getName());
@@ -209,7 +209,9 @@ public class ApiController {
                 .retrieve().body(String.class);
     }
 
-    @Cacheable(value = "homestatus", key = "#principal.name + ':' + #homeId", unless = "#result == null")
+    @Cacheable(value = "homestatus",
+            key = "'homestatus:' + #homeId",
+            unless = "#result == null")
     @GetMapping("/homestatus")
     public String getHomeStatus(Principal principal, @RequestParam("home_id") String homeId) throws NetatmoUnthorizedException{
         log.debug("Calling for homesdata: " + principal.getName() + ":" + homeId);
@@ -220,7 +222,9 @@ public class ApiController {
                 .body(String.class);
     }
 
-    @Cacheable(value = "getmeasure", key = "#principal.name + ':' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + T(java.util.Arrays).toString(#types)", unless = "#result == null")
+    @Cacheable(value = "getmeasure",
+            key = "'measure:' + #deviceId + ':' + #moduleId + ':' + #scale + ':' + T(java.util.Arrays).toString(#types)",
+            unless = "#result == null")
     @GetMapping("/getmeasure")
     public String getMeasure(Principal principal,
                              @RequestParam("device_id") String deviceId,
