@@ -1031,9 +1031,25 @@ function App() {
                                 "Authorization": "Bearer " + token
                             }
                         });
+
+                        if (homesDataResponse.status === 401 || homesDataResponse.status === 403) {
+                            addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
+                            const tokenId = localStorage.getItem("tokenId");
+                            if (tokenId) {
+                                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
+                            } else {
+                                addMessage(`No tokenId found. Please sign up again.`, 'error');
+                            }
+                            return;
+                        }
+
                         if (homesDataResponse.status !== 200) {
-                            const errorData = await homesDataResponse.json();
-                            addMessage(`Netatmo API Error (${errorData.code}): ${errorData.message}`, 'error');
+                            try {
+                                const errorData = await homesDataResponse.json();
+                                addMessage(`Netatmo API Error (${errorData.error?.code || 'unknown'}): ${errorData.error?.message || 'Unknown error'}`, 'error');
+                            } catch (e) {
+                                addMessage(`Netatmo API Error: ${homesDataResponse.status} ${homesDataResponse.statusText}`, 'error');
+                            }
                             return;
                         }
 
