@@ -1,6 +1,6 @@
 package net.pautet.softs.demospring.controller;
 
-import net.pautet.softs.demospring.entity.Message;
+import net.pautet.softs.demospring.entity.LogMessage;
 import net.pautet.softs.demospring.rest.ApiController;
 import net.pautet.softs.demospring.service.MessageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +15,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class MessageControllerTest {
+class LogMessageControllerTest {
 
     private MessageService messageService;
     private ApiController apiController;
@@ -29,13 +29,13 @@ class MessageControllerTest {
     @Test
     void getMessages_WhenSuccessful() {
         // Arrange
-        Message message1 = createTestMessage("Test message 1", "info", "server");
-        Message message2 = createTestMessage("Test message 2", "error", "client");
-        List<Message> expectedMessages = Arrays.asList(message1, message2);
-        when(messageService.getAllMessages()).thenReturn(expectedMessages);
+        LogMessage logMessage1 = createTestMessage("Test message 1", "info", "server");
+        LogMessage logMessage2 = createTestMessage("Test message 2", "error", "client");
+        List<LogMessage> expectedLogMessages = Arrays.asList(logMessage1, logMessage2);
+        when(messageService.getAllMessages()).thenReturn(expectedLogMessages);
 
         // Act
-        ResponseEntity<List<Message>> response = apiController.getAllMessages();
+        ResponseEntity<List<LogMessage>> response = apiController.getAllMessages();
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -51,7 +51,7 @@ class MessageControllerTest {
         when(messageService.getAllMessages()).thenReturn(Arrays.asList());
 
         // Act
-        ResponseEntity<List<Message>> response = apiController.getAllMessages();
+        ResponseEntity<List<LogMessage>> response = apiController.getAllMessages();
 
         // Assert
         assertEquals(HttpStatus.OK, response.getStatusCode());
@@ -59,12 +59,12 @@ class MessageControllerTest {
         assertTrue(response.getBody().isEmpty());
     }
 
-    private Message createTestMessage(String content, String severity, String source) {
-        Message message = new Message();
-        message.setMessage(content);
-        message.setSeverity(severity);
-        message.setSource(source);
-        message.setTimestamp(Instant.now());
-        return message;
+    private LogMessage createTestMessage(String content, String severity, String source) {
+        LogMessage logMessage = new LogMessage();
+        logMessage.setMessage(content);
+        logMessage.setSeverity(severity);
+        logMessage.setSource(source);
+        logMessage.setTimestamp(Instant.now());
+        return logMessage;
     }
 } 

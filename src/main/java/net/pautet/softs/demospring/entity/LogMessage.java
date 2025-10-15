@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
-public class Message {
+public class LogMessage {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -16,11 +16,11 @@ public class Message {
     private String source;
     private Instant timestamp;
 
-    public Message() {
+    public LogMessage() {
         this.timestamp = Instant.now();
     }
 
-    public Message(String message, String severity, String source) {
+    public LogMessage(String message, String severity, String source) {
         this.message = message;
         this.severity = severity;
         this.source = source;

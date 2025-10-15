@@ -101,10 +101,7 @@ public class SalesforceService {
         if (!responseEntity.getBody().accepted()) {
             messageService.error("Data Cloud did not accept ingested data !: " + responseEntity.getBody());
             throw new IOException("Data Cloud did not accept ingested data !: " + responseEntity.getBody());
-        } else {
-            log.info("Data Cloud accepted ingest data");
         }
-
     }
 
     private String safeString(Object value) {

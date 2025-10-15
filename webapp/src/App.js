@@ -634,7 +634,7 @@ const getRelativeTime = (d1, d2 = new Date()) => {
 function App() {
     const [homeStatus, setHomeStatus] = useState({})
     const [homesData, setHomesData] = useState({})
-    const [messages, setMessages] = useState([]);
+    const [logMessages, setMessages] = useState([]);
     const [outdoorModule, setOutdoorModule] = useState({});
     const [poolHouseModule, setPoolHouseModule] = useState({});
     const [homeOfficeModule, setHomeOfficeModule] = useState({});
@@ -655,7 +655,7 @@ function App() {
 
     const fetchServerMessages = useCallback(async () => {
         try {
-            const response = await fetch("/api/messages", {
+            const response = await fetch("/api/logMessages", {
                 method: "GET",
                 headers: {
                     "Authorization": "Bearer " + sessionStorage.getItem("token")
@@ -664,9 +664,9 @@ function App() {
             if (response.status === 200) {
                 const serverMessages = await response.json();
                 setMessages(prev => {
-                    // Filter out previous server messages
+                    // Filter out previous server logMessages
                     const nonServerMessages = prev.filter(msg => msg.source !== 'server');
-                    // Add new server messages
+                    // Add new server logMessages
                     const newServerMessages = serverMessages.map(msg => ({
                         message: msg.message,
                         severity: msg.severity,
@@ -680,10 +680,10 @@ function App() {
                     return allMessages.slice(-MAX_MESSAGES);
                 });
             } else {
-                console.error("Failed to fetch server messages:", response.status);
+                console.error("Failed to fetch server logMessages:", response.status);
             }
         } catch (error) {
-            console.error("Error fetching server messages:", error);
+            console.error("Error fetching server logMessages:", error);
         }
     }, []);
 
@@ -945,7 +945,7 @@ function App() {
     
             const messageInterval = setInterval(() => {
                 fetchServerMessages();
-            }, 30000); // Fetch server messages every 30 seconds
+            }, 30000); // Fetch server logMessages every 30 seconds
     
             return () => {
                 clearInterval(statusInterval);
@@ -1197,8 +1197,8 @@ function App() {
                         overflowY: 'auto',
                         padding: '0.25em'
                     }}>
-                        <div className="messages-container">
-                            {messages.map((msg, index) => (
+                        <div className="logMessages-container">
+                            {logMessages.map((msg, index) => (
                                 <Message
                                     key={index}
                                     message={msg.message}

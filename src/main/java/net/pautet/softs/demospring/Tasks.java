@@ -40,7 +40,6 @@ public class Tasks {
                 messageService.info("Salesforce configuration not available, skipping data push to Data Cloud");
                 return;
             }
-
             log.info("Starting scheduled Netatmo data fetch and push at {}", new java.util.Date());
             List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
             salesforceService.pushToDataCloud(metrics);

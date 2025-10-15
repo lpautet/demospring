@@ -1,13 +1,11 @@
 package net.pautet.softs.demospring;
 
-import net.pautet.softs.demospring.entity.Message;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
 import net.pautet.softs.demospring.service.SchedulingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -15,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class TasksTest {

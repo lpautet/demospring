@@ -1,6 +1,6 @@
 package net.pautet.softs.demospring.bootstrap;
 
-import net.pautet.softs.demospring.entity.Message;
+import net.pautet.softs.demospring.entity.LogMessage;
 import net.pautet.softs.demospring.repository.MessageRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -18,7 +18,7 @@ public class StartupMessages implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) throws Exception {
         // Add a startup message once the application context is ready
-        Message startup = new Message(
+        LogMessage startup = new LogMessage(
                 "Application started successfully.",
                 "INFO",
                 "server"

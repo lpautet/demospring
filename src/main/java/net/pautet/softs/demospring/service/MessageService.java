@@ -1,6 +1,6 @@
 package net.pautet.softs.demospring.service;
 
-import net.pautet.softs.demospring.entity.Message;
+import net.pautet.softs.demospring.entity.LogMessage;
 import net.pautet.softs.demospring.repository.MessageRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -18,18 +18,18 @@ public class MessageService {
     }
 
     public void info(String message) {
-        messageRepository.save(new Message(message,
+        messageRepository.save(new LogMessage(message,
                 "INFO",
                 "server"));
     }
 
     public void error(String message) {
-        messageRepository.save(new Message(message,
+        messageRepository.save(new LogMessage(message,
                 "ERROR",
                 "server"));
     }
 
-    public List<Message> getAllMessages() {
+    public List<LogMessage> getAllMessages() {
         return messageRepository.findAll();
     }
 
@@ -37,9 +37,9 @@ public class MessageService {
     public void cleanupMessages() {
         // Keep only the last 50 messages
         Sort sort = Sort.by(Sort.Direction.ASC, "timestamp");
-        List<Message> messages = messageRepository.findAll(sort);
-        if (messages.size() > 50) {
-            messageRepository.deleteAll(messages.subList(0, messages.size() - 50));
+        List<LogMessage> logMessages = messageRepository.findAll(sort);
+        if (logMessages.size() > 50) {
+            messageRepository.deleteAll(logMessages.subList(0, logMessages.size() - 50));
         }
     }
 }

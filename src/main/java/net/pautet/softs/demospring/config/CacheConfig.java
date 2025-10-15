@@ -59,7 +59,7 @@ public class CacheConfig {
         // homestatus is dynamic -> ~45 seconds TTL
         cacheConfigurations.put("homestatus", defaultConfig.entryTtl(Duration.ofMinutes(3)));
         // getmeasure balances freshness and rate limits -> ~3 minutes TTL
-        cacheConfigurations.put("getmeasure", defaultConfig.entryTtl(Duration.ofMinutes(3)));
+        cacheConfigurations.put("measure", defaultConfig.entryTtl(Duration.ofMinutes(3)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)
