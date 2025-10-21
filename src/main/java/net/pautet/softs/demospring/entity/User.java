@@ -14,4 +14,5 @@ public class User implements Serializable {
     private String accessToken;
     private String refreshToken;
     private Long expiresAt;
+    private Long refreshedAt;
 }

@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.ClientHttpRequestExecution;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.util.LinkedMultiValueMap;
@@ -37,8 +38,10 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_API_URI;
 import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
@@ -48,7 +51,14 @@ import static net.pautet.softs.demospring.rest.AuthController.NETATMO_SCOPE;
 @RequestMapping("/api")
 public class ApiController {
 
+    private static final Duration CONNECT_TIMEOUT_DURATION = Duration.ofSeconds(5);
+    private static final Duration READ_TIMEOUT_DURATION = Duration.ofSeconds(23);
+    private static final long TOKEN_REFRESH_COOLDOWN_MS = 60_000; // 60 seconds
+
     public static final String NETATMO_CALLBACK_ENDPOINT = "/api" + "/netatmo/callback";
+    
+    // Lock map to synchronize token refresh per user
+    private static final ConcurrentHashMap<String, Object> userRefreshLocks = new ConcurrentHashMap<>();
 
     private final NetatmoConfig netatmoConfig;
     private final RedisUserService redisUserService;
@@ -115,7 +125,15 @@ public class ApiController {
                     } else {
                         log.warn("Intercepted HTTP {} client error code {} {} : refreshing token...", status, error.error().code(), error.error().message());
                     }
-                    String newToken = refreshToken(user);
+                    String newToken;
+                    try {
+                        newToken = refreshToken(user);
+                    } catch (IOException e) {
+                        log.error("Failed to refresh token while accessing Netatmo URI: {} | User: {} | Error: {}", 
+                                request.getURI(), user.getUsername(), e.getMessage());
+                        throw new IOException("Token refresh failed for user " + user.getUsername() + 
+                                " while accessing " + request.getURI() + ": " + e.getMessage(), e);
+                    }
                     if (newToken == null) {
                         throw new IOException("Failed to refresh token - received null token");
                     }
@@ -153,34 +171,72 @@ public class ApiController {
         }
 
         private String refreshToken(User user) throws IOException {
-            try {
-                MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
-                formData.add("grant_type", "refresh_token");
-                formData.add("client_id", netatmoConfig.clientId());
-                formData.add("client_secret", netatmoConfig.clientSecret());
-                formData.add("refresh_token", user.getRefreshToken());
-                NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
-                        .build().post().uri("/oauth2/token").body(formData)
-                        .retrieve()
-                        .body(NetatmoTokenResponse.class);
-                log.debug("Netatmo Token Response: {}", tokenResponse);
-                log.info("Netatmo Token refreshed.");
-                messageService.info("Netatmo Token refreshed.");
-                if (tokenResponse == null) {
-                    throw new IOException("Unexpected null tokenResponse!");
+            // Get or create a lock object for this specific user
+            Object userLock = userRefreshLocks.computeIfAbsent(user.getUsername(), k -> new Object());
+            
+            synchronized (userLock) {
+                // Re-fetch user from Redis to get the latest state (in case another thread already refreshed)
+                User latestUser = redisUserService.findByUsername(user.getUsername());
+                if (latestUser == null) {
+                    log.error("User not found in Redis during token refresh: {}", user.getUsername());
+                    throw new IOException("User not found during token refresh");
                 }
-                user.setAccessToken(tokenResponse.accessToken());
-                user.setRefreshToken(tokenResponse.refreshToken());
-                redisUserService.save(user);
-                return tokenResponse.accessToken();
-            } catch (HttpClientErrorException.BadRequest bre) {
-                NetatmoBadRequestResponse errorResponse = bre.getResponseBodyAs(NetatmoBadRequestResponse.class);
-                log.error("Netatmo Bad Request: {}", errorResponse);
-                throw new IOException("Failed to refresh token: " + errorResponse.error());
-            }
-            catch (Exception e) {
-                log.error("Error refreshing token: {}", e.getMessage(), e);
-                throw new IOException("Failed to refresh token", e);
+                
+                // Check if token was refreshed recently (within last 60 seconds)
+                Long lastRefreshedAt = latestUser.getRefreshedAt();
+                if (lastRefreshedAt != null) {
+                    long timeSinceRefresh = System.currentTimeMillis() - lastRefreshedAt;
+                    if (timeSinceRefresh < TOKEN_REFRESH_COOLDOWN_MS) {
+                        log.warn("Token was refreshed {} ms ago (< 60s), skipping refresh for user: {}",
+                                timeSinceRefresh, user.getUsername());
+                        // Update the user object with the latest token from Redis
+                        user.setAccessToken(latestUser.getAccessToken());
+                        user.setRefreshToken(latestUser.getRefreshToken());
+                        user.setRefreshedAt(latestUser.getRefreshedAt());
+                        return latestUser.getAccessToken();
+                    }
+                }
+                
+                log.info("Performing token refresh for user: {}", user.getUsername());
+                
+                try {
+                    MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+                    formData.add("grant_type", "refresh_token");
+                    formData.add("client_id", netatmoConfig.clientId());
+                    formData.add("client_secret", netatmoConfig.clientSecret());
+                    formData.add("refresh_token", latestUser.getRefreshToken());
+                    NetatmoTokenResponse tokenResponse = RestClient.builder().baseUrl(NETATMO_API_URI)
+                            .build().post().uri("/oauth2/token").body(formData)
+                            .retrieve()
+                            .body(NetatmoTokenResponse.class);
+                    log.debug("Netatmo Token Response: {}", tokenResponse);
+                    log.info("Netatmo Token refreshed successfully for user: {}", user.getUsername());
+                    messageService.info("Netatmo Token refreshed.");
+                    if (tokenResponse == null) {
+                        throw new IOException("Unexpected null tokenResponse!");
+                    }
+                    
+                    long now = System.currentTimeMillis();
+                    latestUser.setAccessToken(tokenResponse.accessToken());
+                    latestUser.setRefreshToken(tokenResponse.refreshToken());
+                    latestUser.setRefreshedAt(now);
+                    redisUserService.save(latestUser);
+                    
+                    // Update the passed user object as well
+                    user.setAccessToken(tokenResponse.accessToken());
+                    user.setRefreshToken(tokenResponse.refreshToken());
+                    user.setRefreshedAt(now);
+                    
+                    return tokenResponse.accessToken();
+                } catch (HttpClientErrorException.BadRequest bre) {
+                    NetatmoBadRequestResponse errorResponse = bre.getResponseBodyAs(NetatmoBadRequestResponse.class);
+                    log.error("Netatmo Bad Request for user {}: {}", user.getUsername(), errorResponse);
+                    throw new IOException("Failed to refresh token: " + errorResponse.error());
+                }
+                catch (Exception e) {
+                    log.error("Error refreshing token for user {}: {}", user.getUsername(), e.getMessage(), e);
+                    throw new IOException("Failed to refresh token", e);
+                }
             }
         }
     }
@@ -195,7 +251,15 @@ public class ApiController {
             throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user access token is null");
         }
         log.debug("Creating API web client with access token: {}", user.getAccessToken());
-        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
+        // 1. Configure the ClientHttpRequestFactory for timeouts
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+
+        // Connection Timeout: Max time to establish the connection
+        requestFactory.setConnectTimeout((int) CONNECT_TIMEOUT_DURATION.toMillis());
+
+        // Read Timeout (Response Timeout): Max time to wait for data to be read once connection is established
+        requestFactory.setReadTimeout((int) READ_TIMEOUT_DURATION.toMillis());
+        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api").requestFactory(requestFactory)
                 .defaultHeaders(headers -> headers.setBearerAuth(user.getAccessToken()))
                 .requestInterceptor(new RefreshTokenInterceptor(principal))
                 .build();
