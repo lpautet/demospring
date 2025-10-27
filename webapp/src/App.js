@@ -655,7 +655,7 @@ function App() {
 
     const fetchServerMessages = useCallback(async () => {
         try {
-            const response = await fetch("/api/logMessages", {
+            const response = await fetch("/api/messages", {
                 method: "GET",
                 headers: {
                     "Authorization": "Bearer " + sessionStorage.getItem("token")
