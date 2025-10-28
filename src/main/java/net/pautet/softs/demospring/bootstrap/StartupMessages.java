@@ -19,7 +19,7 @@ public class StartupMessages implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         // Add a startup message once the application context is ready
         LogMessage startup = new LogMessage(
-                "Application started successfully. ",
+                "Application started successfully.",
                 "INFO",
                 "server"
         );

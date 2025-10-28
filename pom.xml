@@ -17,6 +17,7 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.13.0</jjwt.version>
+        <slack.version>1.45.0</slack.version>
     </properties>
 
     <dependencies>
@@ -78,6 +79,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- Slack SDK -->
+        <dependency>
+            <groupId>com.slack.api</groupId>
+            <artifactId>slack-api-client</artifactId>
+            <version>${slack.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
