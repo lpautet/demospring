@@ -142,7 +142,7 @@ public class SlackService {
             String emoji = getEmojiForSeverity(logMessage.getSeverity());
             String formattedTime = FORMATTER.format(logMessage.getTimestamp());
             
-            String messageText = String.format("%s *[%s]* %s\n_Source: %s | Time: %s_",
+            String messageText = String.format("%s *[%s]* %s%n_Source: %s | Time: %s_",
                     emoji,
                     logMessage.getSeverity(),
                     logMessage.getMessage(),
@@ -182,7 +182,7 @@ public class SlackService {
             for (LogMessage logMessage : logMessages) {
                 String emoji = getEmojiForSeverity(logMessage.getSeverity());
                 String formattedTime = FORMATTER.format(logMessage.getTimestamp());
-                messageBuilder.append(String.format("%s *[%s]* %s\n_Source: %s | Time: %s_\n\n",
+                messageBuilder.append(String.format("%s *[%s]* %s%n_Source: %s | Time: %s_%n%n",
                         emoji,
                         logMessage.getSeverity(),
                         logMessage.getMessage(),
