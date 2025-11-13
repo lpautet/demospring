@@ -9,7 +9,7 @@ import java.util.Optional;
 /**
  * Binance Account Information Response
  * Endpoint: GET /api/v3/account
- * 
+ * <p/>
  * Returns account information including balances, trading permissions, and rate limits.
  * 
  * Official docs: https://binance-docs.github.io/apidocs/spot/en/#account-information-user_data
