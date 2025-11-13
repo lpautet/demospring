@@ -54,12 +54,11 @@ public class CacheConfig {
 
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
 
-        // homesdata changes slowly -> 15 minutes TTL
+        // Netatmo API caches
         cacheConfigurations.put("homesdata", defaultConfig.entryTtl(Duration.ofMinutes(15)));
-        // homestatus is dynamic -> ~45 seconds TTL
         cacheConfigurations.put("homestatus", defaultConfig.entryTtl(Duration.ofMinutes(3)));
-        // getmeasure balances freshness and rate limits -> ~3 minutes TTL
         cacheConfigurations.put("measure", defaultConfig.entryTtl(Duration.ofMinutes(3)));
+        cacheConfigurations.put("netatmoMetrics", defaultConfig.entryTtl(Duration.ofMinutes(5)));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

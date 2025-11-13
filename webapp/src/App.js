@@ -2,6 +2,8 @@ import logo from './logo.svg';
 import './App.css';
 import {useEffect, useState, useCallback} from "react";
 import Chat from './Chat';
+import EthTrading from './EthTrading';
+import RecommendationHistory from './RecommendationHistory';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -13,7 +15,8 @@ import {
     Title,
     Tooltip,
     Legend,
-    TimeScale
+    TimeScale,
+    Filler
 } from 'chart.js';
 import {Line, Bar} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
@@ -28,7 +31,8 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
-    TimeScale
+    TimeScale,
+    Filler
 );
 
 // Map rf_status to 0-4 bars (adjust thresholds to match your data semantics)
@@ -633,7 +637,7 @@ const getRelativeTime = (d1, d2 = new Date()) => {
 };
 
 function App() {
-    const [currentPage, setCurrentPage] = useState('dashboard'); // 'dashboard' or 'chat'
+    const [currentPage, setCurrentPage] = useState('dashboard'); // 'dashboard', 'chat', 'eth', or 'recommendations'
     const [homeStatus, setHomeStatus] = useState({})
     const [homesData, setHomesData] = useState({})
     const [logMessages, setMessages] = useState([]);
@@ -1116,10 +1120,44 @@ function App() {
                     >
                         🤖 AI Chat
                     </button>
+                    <button
+                        onClick={() => setCurrentPage('eth')}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            background: currentPage === 'eth' ? '#667eea' : 'white',
+                            color: currentPage === 'eth' ? 'white' : '#333',
+                            border: '1px solid #667eea',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        📈 ETH Trading
+                    </button>
+                    <button
+                        onClick={() => setCurrentPage('recommendations')}
+                        style={{
+                            padding: '0.75rem 1.5rem',
+                            background: currentPage === 'recommendations' ? '#f59e0b' : 'white',
+                            color: currentPage === 'recommendations' ? 'white' : '#333',
+                            border: '1px solid #f59e0b',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontWeight: '600',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        🧠 AI Memory
+                    </button>
                 </div>
                 
                 {currentPage === 'chat' ? (
                     <Chat />
+                ) : currentPage === 'eth' ? (
+                    <EthTrading />
+                ) : currentPage === 'recommendations' ? (
+                    <RecommendationHistory />
                 ) : (
                 <div className={"grid"}>
                     <TemperatureComparisonCard

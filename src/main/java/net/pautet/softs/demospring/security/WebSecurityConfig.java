@@ -39,6 +39,7 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(authorizeRequests ->
                         authorizeRequests
                                 .requestMatchers("/api/auth/**", "/*", "/static/**", "/api/netatmo/authorize", "/api/netatmo/callback", "/api/datacloud/data", "/api/salesforce/**").permitAll()
+                                .requestMatchers("/api/trading/**").authenticated()
                                 .anyRequest().authenticated()
                 );
         http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);

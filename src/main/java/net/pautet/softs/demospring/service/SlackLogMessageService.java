@@ -17,14 +17,13 @@ import net.pautet.softs.demospring.entity.LogMessage;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Slf4j
 @Service
-public class SlackService {
+public class SlackLogMessageService {
 
     private final SlackConfig slackConfig;
     private final Slack slackClient;
@@ -33,7 +32,7 @@ public class SlackService {
     
     private String resolvedChannelId;
 
-    public SlackService(SlackConfig slackConfig) {
+    public SlackLogMessageService(SlackConfig slackConfig) {
         this.slackConfig = slackConfig;
         this.slackClient = Slack.getInstance();
     }

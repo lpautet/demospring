@@ -14,9 +14,9 @@ import java.util.List;
 public class MessageService {
 
     private final MessageRepository messageRepository;
-    private final SlackService slackService;
+    private final SlackLogMessageService slackService;
 
-    public MessageService(MessageRepository messageRepository, SlackService slackService) {
+    public MessageService(MessageRepository messageRepository, SlackLogMessageService slackService) {
         this.messageRepository = messageRepository;
         this.slackService = slackService;
     }

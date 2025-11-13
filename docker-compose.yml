@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: demospring-postgres
+    environment:
+      POSTGRES_DB: demospring
+      POSTGRES_USER: demospring
+      POSTGRES_PASSWORD: demospring123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demospring"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+
+# Usage:
+# Start:  docker-compose up -d
+# Stop:   docker-compose down
+# Wipe:   docker-compose down -v (removes data)
+# Logs:   docker-compose logs -f postgres
