@@ -102,6 +102,7 @@ function EthTrading() {
     
     // Trade expansion state
     const [expandedTrades, setExpandedTrades] = useState({});
+    const [expandedHistory, setExpandedHistory] = useState({});
     
     // AI Chat state
     const [chatMessages, setChatMessages] = useState([]);
@@ -189,8 +190,9 @@ function EthTrading() {
                                 const ord = await resp.json();
                                 const type = (ord.type || '').toUpperCase();
                                 let leg = 'OTHER';
-                                if (type === 'LIMIT') leg = 'TP';
-                                else if (type.includes('STOP')) leg = 'SL';
+                                // Classify: any STOP* -> SL, otherwise any *LIMIT* -> TP (covers LIMIT and LIMIT_MAKER)
+                                if (type.includes('STOP')) leg = 'SL';
+                                else if (type.includes('LIMIT')) leg = 'TP';
                                 updates[t.orderId] = leg;
                             }
                         } catch (e) {
@@ -233,6 +235,7 @@ function EthTrading() {
                                     status: ord.status || null,
                                     timeInForce: ord.timeInForce || null,
                                     price: ord.price ?? null,
+                                    stopPrice: ord.stopPrice ?? null,
                                     origQty: ord.origQty ?? null,
                                     executedQty: ord.executedQty ?? null,
                                     side: ord.side ?? null,
@@ -243,8 +246,9 @@ function EthTrading() {
                                 if (!t.isBuyer && (t.orderListId !== null && t.orderListId !== undefined)) {
                                     const upType = (ord.type || '').toUpperCase();
                                     let leg = 'OTHER';
-                                    if (upType === 'LIMIT') leg = 'TP';
-                                    else if (upType.includes('STOP')) leg = 'SL';
+                                    // Classify: any STOP* -> SL, otherwise any *LIMIT* -> TP (covers LIMIT and LIMIT_MAKER)
+                                    if (upType.includes('STOP')) leg = 'SL';
+                                    else if (upType.includes('LIMIT')) leg = 'TP';
                                     legUpdates[t.orderId] = leg;
                                 }
                             }
@@ -381,22 +385,47 @@ function EthTrading() {
     // Fetch kline/candlestick data for chart
     const fetchETHKlines = async () => {
         try {
-            const response = await fetch("/api/trading/eth/klines?interval=1h&limit=24", {
-                method: "GET",
-                headers: {
-                    "Authorization": "Bearer " + sessionStorage.getItem("token")
-                }
-            });
+            const endMs = Date.now();
+            const startMs = endMs - 24 * 60 * 60 * 1000; // last 24h
 
-            if (response.status === 200) {
-                const data = await response.json();
-                // Kline format: [openTime, open, high, low, close, volume, closeTime, ...]
-                const prices = data.map(kline => ({
-                    time: new Date(kline[0]),
-                    price: parseFloat(kline[4]) // close price
-                }));
-                setPriceHistory(prices);
+            // First batch: most recent 1000 1m candles up to now
+            const resp1 = await fetch(`/api/trading/eth/klines?interval=1m&limit=1000&endTime=${endMs}`, {
+                method: "GET",
+                headers: { "Authorization": "Bearer " + sessionStorage.getItem("token") }
+            });
+            if (!resp1.ok) throw new Error(`Klines batch1 failed: ${resp1.status}`);
+            const data1 = await resp1.json();
+
+            // Determine if we need more to cover full 24h
+            let klinesAll = Array.isArray(data1) ? data1 : [];
+            const need = 1440 - klinesAll.length;
+            if (need > 0 && klinesAll.length > 0) {
+                const earliestOpen = klinesAll[0][0]; // openTime of first (oldest) element
+                const end2 = Math.min(earliestOpen - 1, endMs);
+                const limit2 = Math.min(need, 1000);
+                const resp2 = await fetch(`/api/trading/eth/klines?interval=1m&limit=${limit2}&endTime=${end2}`, {
+                    method: "GET",
+                    headers: { "Authorization": "Bearer " + sessionStorage.getItem("token") }
+                });
+                if (resp2.ok) {
+                    const data2 = await resp2.json();
+                    if (Array.isArray(data2) && data2.length) {
+                        klinesAll = [...data2, ...klinesAll];
+                    }
+                }
             }
+
+            // Trim to last 1440 if more
+            if (klinesAll.length > 1440) {
+                klinesAll = klinesAll.slice(klinesAll.length - 1440);
+            }
+
+            // Map to chart points
+            const prices = klinesAll.map(kline => ({
+                time: new Date(kline[0]),
+                price: parseFloat(kline[4])
+            }));
+            setPriceHistory(prices);
         } catch (err) {
             console.error("Error fetching klines:", err);
         } finally {
@@ -720,35 +749,23 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
     
     // Place markers at correct index by finding matching or closest time
     recentTrades.forEach(trade => {
-        const tradeLabel = new Date(trade.time).toLocaleTimeString();
-        let index = chartLabels.findIndex(label => label === tradeLabel);
-        
-        // If no exact match, find closest time
-        if (index === -1 && priceHistory.length > 0) {
-            const tradeTime = trade.time;
-            let closestIndex = 0;
-            let minDiff = Math.abs(priceHistory[0].time.getTime() - tradeTime);
-            
-            for (let i = 1; i < priceHistory.length; i++) {
-                const diff = Math.abs(priceHistory[i].time.getTime() - tradeTime);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestIndex = i;
-                }
-            }
-            
-            // Only use closest if within 5 minutes (300000ms)
-            if (minDiff < 300000) {
-                index = closestIndex;
+        if (priceHistory.length === 0) return;
+        const tradeTime = trade.time;
+        let closestIndex = 0;
+        let minDiff = Math.abs(priceHistory[0].time.getTime() - tradeTime);
+        for (let i = 1; i < priceHistory.length; i++) {
+            const diff = Math.abs(priceHistory[i].time.getTime() - tradeTime);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIndex = i;
             }
         }
-        
-        if (index !== -1) {
+        if (minDiff < 60000) { // within 1 minute
             const price = safeParseFloat(trade.price);
             if (trade.isBuyer) {
-                buyMarkersData[index] = price;
+                buyMarkersData[closestIndex] = price;
             } else {
-                sellMarkersData[index] = price;
+                sellMarkersData[closestIndex] = price;
             }
         }
     });
@@ -766,27 +783,23 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
     trades
         .filter(t => (t.orderListId !== null && t.orderListId !== undefined) && !t.isBuyer)
         .forEach(trade => {
-            const tradeLabel = new Date(trade.time).toLocaleTimeString();
-            let index = chartLabels.findIndex(label => label === tradeLabel);
-            if (index === -1 && priceHistory.length > 0) {
-                const tradeTime = trade.time;
-                let closestIndex = 0;
-                let minDiff = Math.abs(priceHistory[0].time.getTime() - tradeTime);
-                for (let i = 1; i < priceHistory.length; i++) {
-                    const diff = Math.abs(priceHistory[i].time.getTime() - tradeTime);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        closestIndex = i;
-                    }
+            if (priceHistory.length === 0) return;
+            const tradeTime = trade.time;
+            let closestIndex = 0;
+            let minDiff = Math.abs(priceHistory[0].time.getTime() - tradeTime);
+            for (let i = 1; i < priceHistory.length; i++) {
+                const diff = Math.abs(priceHistory[i].time.getTime() - tradeTime);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestIndex = i;
                 }
-                if (minDiff < 300000) index = closestIndex; // within 5 minutes
             }
-            if (index !== -1) {
+            if (minDiff < 60000) {
                 const leg = orderTypeById[trade.orderId];
                 if (leg === 'TP') {
-                    ocoSellTpMarkersData[index] = safeParseFloat(trade.price);
+                    ocoSellTpMarkersData[closestIndex] = safeParseFloat(trade.price);
                 } else if (leg === 'SL') {
-                    ocoSellSlMarkersData[index] = safeParseFloat(trade.price);
+                    ocoSellSlMarkersData[closestIndex] = safeParseFloat(trade.price);
                 }
             }
         });
@@ -804,6 +817,117 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
             .map(o => Number(safeParseFloat(o.stopPrice || o.price).toFixed(2)))
             .filter(v => v > 0)
     ));
+
+    // Pending Entry overlays (BUY LIMIT) with horizon span
+    // Render a dashed blue line that spans from placement time to expiry time
+    const openEntryOrders = openOrders.filter(o => (o.side === 'BUY') && (o.type === 'LIMIT'));
+    const entryLineDatasets = [];
+    if (priceHistory.length > 0 && openEntryOrders.length > 0) {
+        const findClosestIndex = (targetMs) => {
+            let idx = 0;
+            let minDiff = Math.abs(priceHistory[0].time.getTime() - targetMs);
+            for (let i = 1; i < priceHistory.length; i++) {
+                const diff = Math.abs(priceHistory[i].time.getTime() - targetMs);
+                if (diff < minDiff) { minDiff = diff; idx = i; }
+            }
+            return idx;
+        };
+
+        openEntryOrders.forEach(ord => {
+            const level = safeParseFloat(ord.price);
+            if (!(level > 0)) return;
+
+            const info = getExpiryInfoForOrder(ord);
+            if (!info) return; // no horizon metadata, skip span rendering
+
+            // Clip to chart window
+            let spanStartMs = Math.max(info.placedMs, chartStartTime);
+            let spanEndMs = Math.min(info.expiryMs, chartEndTime);
+            if (spanEndMs <= chartStartTime || spanStartMs >= chartEndTime) return; // outside view
+
+            const startIdx = findClosestIndex(spanStartMs);
+            const endIdx = findClosestIndex(spanEndMs);
+            const start = Math.max(0, Math.min(startIdx, endIdx));
+            const end = Math.min(priceHistory.length - 1, Math.max(startIdx, endIdx));
+            if (end < 0 || start > priceHistory.length - 1) return;
+
+            const data = new Array(chartLabels.length).fill(null);
+            for (let i = start; i <= end; i++) data[i] = Number(level.toFixed(2));
+
+            const countdownLabel = formatCountdown(info.remainingMs);
+            entryLineDatasets.push({
+                label: `Open Entry ($${Number(level.toFixed(2))}) · ${countdownLabel}`,
+                data,
+                borderColor: '#3b82f6',
+                backgroundColor: 'transparent',
+                borderDash: [4, 4],
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: false,
+                order: 2
+            });
+        });
+    }
+
+    // Compute shaded horizon bands for open entry orders (for visual validity window)
+    const horizonZones = (() => {
+        if (!priceHistory || priceHistory.length === 0 || !openEntryOrders || openEntryOrders.length === 0) return [];
+        const zones = [];
+        const findClosestIndex = (targetMs) => {
+            let idx = 0;
+            let minDiff = Math.abs(priceHistory[0].time.getTime() - targetMs);
+            for (let i = 1; i < priceHistory.length; i++) {
+                const diff = Math.abs(priceHistory[i].time.getTime() - targetMs);
+                if (diff < minDiff) { minDiff = diff; idx = i; }
+            }
+            return idx;
+        };
+        openEntryOrders.forEach(ord => {
+            const info = getExpiryInfoForOrder(ord);
+            if (!info) return;
+            let spanStartMs = Math.max(info.placedMs, chartStartTime);
+            let spanEndMs = Math.min(info.expiryMs, chartEndTime);
+            if (spanEndMs <= chartStartTime || spanStartMs >= chartEndTime) return;
+            const startIdx = findClosestIndex(spanStartMs);
+            const endIdx = findClosestIndex(spanEndMs);
+            zones.push({
+                start: Math.max(0, Math.min(startIdx, endIdx)),
+                end: Math.min(priceHistory.length - 1, Math.max(startIdx, endIdx)),
+                fill: 'rgba(59, 130, 246, 0.08)',
+                stroke: 'rgba(59, 130, 246, 0.25)'
+            });
+        });
+        return zones;
+    })();
+
+    // Chart.js plugin to draw shaded horizon bands
+    const horizonBandsPlugin = {
+        id: 'horizonBands',
+        beforeDatasetsDraw(chart) {
+            const zones = chart?.options?.plugins?.horizonBands?.zones || [];
+            if (!zones || zones.length === 0) return;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return;
+            const meta = chart.getDatasetMeta(0);
+            if (!meta || !meta.data || meta.data.length === 0) return;
+            zones.forEach(z => {
+                const startPt = meta.data[z.start];
+                const endPt = meta.data[z.end];
+                if (!startPt || !endPt) return;
+                const leftX = Math.min(startPt.x, endPt.x);
+                const rightX = Math.max(startPt.x, endPt.x);
+                ctx.save();
+                ctx.fillStyle = z.fill || 'rgba(59, 130, 246, 0.08)';
+                ctx.fillRect(leftX, chartArea.top, rightX - leftX, chartArea.bottom - chartArea.top);
+                if (z.stroke) {
+                    ctx.strokeStyle = z.stroke;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(leftX, chartArea.top, rightX - leftX, chartArea.bottom - chartArea.top);
+                }
+                ctx.restore();
+            });
+        }
+    };
 
     // Build line chart with OCO overlays
     const chartData = {
@@ -876,15 +1000,17 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 fill: false,
                 order: 2
             })),
+            // Open Entry overlays (BUY LIMIT horizon spans)
+            ...entryLineDatasets,
             ...(hasBuyMarkers ? [{
                 label: 'Buy',
                 data: buyMarkersData,
                 showLine: false,
                 backgroundColor: '#10b981',
                 borderColor: '#059669',
-                borderWidth: 2,
-                pointRadius: 8,
-                pointHoverRadius: 10,
+                borderWidth: 1,
+                pointRadius: 3,
+                pointHoverRadius: 8,
                 pointStyle: 'circle',
                 spanGaps: false,
                 order: 0
@@ -895,9 +1021,9 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 showLine: false,
                 backgroundColor: '#ef4444',
                 borderColor: '#dc2626',
-                borderWidth: 2,
-                pointRadius: 8,
-                pointHoverRadius: 10,
+                borderWidth: 1,
+                pointRadius: 4,
+                pointHoverRadius: 8,
                 pointStyle: 'circle',
                 spanGaps: false,
                 order: 0
@@ -925,6 +1051,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 pointRadius: 9,
                 pointHoverRadius: 11,
                 pointStyle: 'triangle',
+                pointRotation: 180,
                 spanGaps: false,
                 order: 0
             }] : [])
@@ -934,6 +1061,11 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
+        transitions: {
+            active: { animation: { duration: 0 } },
+            resize: { animation: { duration: 0 } }
+        },
         plugins: {
             legend: {
                 display: true,
@@ -942,6 +1074,15 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
             tooltip: {
                 mode: 'index',
                 intersect: false
+            },
+            // Custom plugin options for horizon bands
+            horizonBands: {
+                zones: horizonZones
+            }
+        },
+        elements: {
+            point: {
+                radius: 0
             }
         },
         scales: {
@@ -993,192 +1134,34 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
             <h1 style={{ textAlign: 'center', marginBottom: '2rem' }}>
                 📈 ETH Trading Dashboard
             </h1>
-
-            {/* Price Cards */}
-            <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
-                gap: '1.5rem',
-                marginBottom: '2rem'
-            }}>
-                {/* Current Price Card */}
+            {/* Total Portfolio Value (Top Summary) */}
+            {portfolio && (
                 <div style={{
                     background: 'white',
                     borderRadius: '12px',
                     padding: '1.5rem',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    marginBottom: '2rem'
                 }}>
                     <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                        Current Price
+                        Total Portfolio Value
                     </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>
-                        ${ethPrice ? parseFloat(ethPrice.price).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '---'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.5rem' }}>
-                        ETH/USDC
-                    </div>
+                    {(() => {
+                        const usdcTotal = safeParseFloat(portfolio.usdcTotal ?? (safeParseFloat(portfolio.usdcBalance) + safeParseFloat(portfolio.usdcLocked)));
+                        const ethTotal = safeParseFloat(portfolio.ethTotal ?? (safeParseFloat(portfolio.ethBalance) + safeParseFloat(portfolio.ethLocked)));
+                        const price = ethPrice ? safeParseFloat(ethPrice.price) : safeParseFloat(portfolio.ethPrice);
+                        const totalValueTotal = (portfolio.totalValueTotal != null) ? safeParseFloat(portfolio.totalValueTotal) : (usdcTotal + ethTotal * (price || 0));
+                        return (
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>
+                                ${totalValueTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                        );
+                    })()}
                 </div>
+            )}
 
-                {/* Portfolio Card */}
-                {portfolio && (
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '1.5rem',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                            Portfolio
-                        </div>
-                        {(() => {
-                            const usdcFree = safeParseFloat(portfolio.usdcBalance);
-                            const usdcLocked = safeParseFloat(portfolio.usdcLocked);
-                            const usdcTotal = safeParseFloat(portfolio.usdcTotal || (usdcFree + usdcLocked));
-                            const ethFree = safeParseFloat(portfolio.ethBalance);
-                            const ethLocked = safeParseFloat(portfolio.ethLocked);
-                            const ethTotal = safeParseFloat(portfolio.ethTotal || (ethFree + ethLocked));
-                            const totalFree = safeParseFloat(portfolio.totalValueFree || portfolio.totalValue);
-                            const totalTotal = safeParseFloat(portfolio.totalValueTotal || (usdcTotal + ethTotal * safeParseFloat(portfolio.ethPrice)));
-                            return (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                    <div>
-                                        <div style={{ color: '#888' }}>USDC</div>
-                                        <div style={{ fontWeight: 600 }}>
-                                            Free: ${usdcFree.toFixed(2)}
-                                        </div>
-                                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                                            Locked: ${usdcLocked.toFixed(2)}
-                                        </div>
-                                        <div style={{ color: '#333' }}>
-                                            Total: ${usdcTotal.toFixed(2)}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div style={{ color: '#888' }}>ETH</div>
-                                        <div style={{ fontWeight: 600 }}>
-                                            Free: {ethFree.toFixed(6)} ETH
-                                        </div>
-                                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                                            Locked: {ethLocked.toFixed(6)} ETH
-                                        </div>
-                                        <div style={{ color: '#333' }}>
-                                            Total: {ethTotal.toFixed(6)} ETH
-                                        </div>
-                                    </div>
-                                    <div style={{ gridColumn: '1 / span 2', borderTop: '1px solid #eee', paddingTop: '0.5rem' }}>
-                                        <div style={{ color: '#888' }}>Total Value</div>
-                                        <div style={{ fontWeight: 600 }}>
-                                            Free: ${totalFree.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </div>
-                                        <div style={{ color: '#333' }}>
-                                            Total: ${totalTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })()}
-                    </div>
-                )}
-
-                {/* Fees Card */}
-                {fees && (
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '1.5rem',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                            Fees
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                            <div>
-                                <div style={{ color: '#888' }}>Maker</div>
-                                <div style={{ fontWeight: '600' }}>{(safeParseFloat(fees.maker) * 100).toFixed(2)}%</div>
-                            </div>
-                            <div>
-                                <div style={{ color: '#888' }}>Taker</div>
-                                <div style={{ fontWeight: '600' }}>{(safeParseFloat(fees.taker) * 100).toFixed(2)}%</div>
-                            </div>
-                            <div style={{ gridColumn: '1 / span 2', borderTop: '1px solid #eee', paddingTop: '0.5rem' }}>
-                                <div style={{ color: '#888' }}>Round-trip (taker+taker)</div>
-                                <div style={{ fontWeight: '600' }}>{(safeParseFloat(fees.taker) * 2 * 100).toFixed(2)}%</div>
-                            </div>
-                        </div>
-                        <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#999' }}>Assumes taker+taker for conservative break-even.</div>
-                    </div>
-                )}
-
-                {/* 24h Change Card */}
-                {ticker24h && (
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '1.5rem',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                            24h Change
-                        </div>
-                        <div style={{ 
-                            fontSize: '2rem', 
-                            fontWeight: 'bold', 
-                            color: isPositive ? '#10b981' : '#ef4444' 
-                        }}>
-                            {isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%
-                        </div>
-                        <div style={{ 
-                            fontSize: '0.9rem', 
-                            color: isPositive ? '#10b981' : '#ef4444',
-                            marginTop: '0.5rem'
-                        }}>
-                            {isPositive ? '+' : ''}${priceChange.toFixed(2)}
-                        </div>
-                    </div>
-                )}
-
-                {/* 24h High/Low Card */}
-                {ticker24h && (
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '1.5rem',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                            24h Range
-                        </div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#333' }}>
-                            <span style={{ color: '#10b981' }}>H: ${parseFloat(ticker24h.highPrice).toLocaleString()}</span>
-                        </div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#333', marginTop: '0.3rem' }}>
-                            <span style={{ color: '#ef4444' }}>L: ${parseFloat(ticker24h.lowPrice).toLocaleString()}</span>
-                        </div>
-                    </div>
-                )}
-
-                {/* 24h Volume Card */}
-                {ticker24h && (
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '12px',
-                        padding: '1.5rem',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    }}>
-                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-                            24h Volume
-                        </div>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#333' }}>
-                            {parseFloat(ticker24h.volume).toLocaleString(undefined, {maximumFractionDigits: 0})} ETH
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.5rem' }}>
-                            ${(parseFloat(ticker24h.quoteVolume) / 1000000).toFixed(2)}M
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Price Chart */}
+            
+ {/* Price Chart */}
             <div style={{
                 background: 'white',
                 borderRadius: '12px',
@@ -1187,12 +1170,144 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 marginBottom: '2rem'
             }}>
                 <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>
-                    24 Hour Price Chart
+                    24h Price Chart (1m candles)
                 </h2>
                 <div style={{ height: '400px' }}>
-                    <Line data={chartData} options={chartOptions} />
+                    <Line data={chartData} options={chartOptions} plugins={[horizonBandsPlugin]} />
                 </div>
+                {openEntryOrders && openEntryOrders.length > 0 && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.9rem', color: '#555', marginBottom: '0.25rem' }}>Pending Entry Orders</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {openEntryOrders.map((ord) => {
+                                const info = getExpiryInfoForOrder(ord);
+                                const price = safeParseFloat(ord.price);
+                                const orig = safeParseFloat(ord.origQty);
+                                const exec = safeParseFloat(ord.executedQty);
+                                const remaining = (isNaN(orig) || isNaN(exec)) ? null : Math.max(0, orig - exec);
+                                const tif = (ord.timeInForce || 'GTC');
+                                const countdown = info ? formatCountdown(info.remainingMs) : null;
+                                return (
+                                    <div key={ord.orderId || ord.clientOrderId} style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                        border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8',
+                                        padding: '4px 8px', borderRadius: '9999px'
+                                    }}>
+                                        <span style={{ fontWeight: 600 }}>Entry</span>
+                                        <span>@ ${!isNaN(price) ? price.toFixed(2) : '—'}</span>
+                                        {(!isNaN(orig)) && (
+                                            <span style={{ color: '#374151' }}>
+                                                Qty {orig.toFixed(6)}{(remaining !== null) ? ` (${remaining.toFixed(6)} left)` : ''}
+                                            </span>
+                                        )}
+                                        <span style={{ color: '#374151' }}>{tif}{countdown ? ` · ${countdown}` : ''}</span>
+                                        <button onClick={() => handleCancelOrder(ord)} style={{
+                                            marginLeft: '4px', fontSize: '0.75rem', padding: '2px 6px',
+                                            border: '1px solid #ddd', borderRadius: '12px', background: 'white', cursor: 'pointer'
+                                        }}>Cancel</button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* Market Stats */}
+            {(ethPrice || ticker24h) && (
+                <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                    gap: '1.5rem',
+                    marginBottom: '2rem'
+                }}>
+                    {/* Current Price Card */}
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    }}>
+                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+                            Current Price
+                        </div>
+                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>
+                            ${ethPrice ? parseFloat(ethPrice.price).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '---'}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.5rem' }}>
+                            ETH/USDC
+                        </div>
+                    </div>
+
+                    {/* 24h Change Card */}
+                    {ticker24h && (
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+                                24h Change
+                            </div>
+                            <div style={{ 
+                                fontSize: '2rem', 
+                                fontWeight: 'bold', 
+                                color: isPositive ? '#10b981' : '#ef4444' 
+                            }}>
+                                {isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%
+                            </div>
+                            <div style={{ 
+                                fontSize: '0.9rem', 
+                                color: isPositive ? '#10b981' : '#ef4444',
+                                marginTop: '0.5rem'
+                            }}>
+                                {isPositive ? '+' : ''}${priceChange.toFixed(2)}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 24h Range Card */}
+                    {ticker24h && (
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+                                24h Range
+                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#333' }}>
+                                <span style={{ color: '#10b981' }}>H: ${parseFloat(ticker24h.highPrice).toLocaleString()}</span>
+                            </div>
+                            <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#333', marginTop: '0.3rem' }}>
+                                <span style={{ color: '#ef4444' }}>L: ${parseFloat(ticker24h.lowPrice).toLocaleString()}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 24h Volume Card */}
+                    {ticker24h && (
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                        }}>
+                            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+                                24h Volume
+                            </div>
+                            <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#333' }}>
+                                {parseFloat(ticker24h.volume).toLocaleString(undefined, {maximumFractionDigits: 0})} ETH
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: '#999', marginTop: '0.5rem' }}>
+                                ${(parseFloat(ticker24h.quoteVolume) / 1000000).toFixed(2)}M
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Portfolio & Trading Section */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
@@ -1238,26 +1353,34 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                     {(() => {
                                         const maker = safeParseFloat(fees.maker);
                                         const taker = safeParseFloat(fees.taker);
-                                        const entry = (latestRec.entryType === 'LIMIT' && latestRec.entryPrice)
+                                        const entry = ((latestRec && latestRec.entryType === 'LIMIT' && latestRec.entryPrice)
                                             ? safeParseFloat(latestRec.entryPrice)
-                                            : (ethPrice ? safeParseFloat(ethPrice.price) : null);
+                                            : (ethPrice ? safeParseFloat(ethPrice.price) : null));
                                         if (!entry || entry <= 0) {
                                             return <div style={{ color: '#888' }}>Entry price unknown. Unable to compute break-even.</div>;
                                         }
                                         const roundTrip = taker * 2; // conservative
                                         const breakEven = entry * (1 + roundTrip);
-                                        const tp1 = latestRec.takeProfit1 ? safeParseFloat(latestRec.takeProfit1) : null;
+                                        const tp1 = (latestRec && latestRec.takeProfit1) ? safeParseFloat(latestRec.takeProfit1) : null;
                                         const pctToTp = tp1 ? (tp1 - entry) / entry : null;
                                         const clears = (pctToTp !== null) ? (pctToTp > roundTrip) : null;
                                         return (
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
                                                 <div>
                                                     <div style={{ color: '#888' }}>Entry Used</div>
-                                                    <div style={{ fontWeight: 600 }}>${entry.toFixed(2)} {latestRec.entryType === 'LIMIT' && latestRec.entryPrice ? '(limit)' : '(market/current)'}</div>
+                                                    <div style={{ fontWeight: 600 }}>${entry.toFixed(2)} {(latestRec && latestRec.entryType === 'LIMIT' && latestRec.entryPrice) ? '(limit)' : '(market/current)'}</div>
                                                 </div>
                                                 <div>
                                                     <div style={{ color: '#888' }}>Break-even Exit</div>
                                                     <div style={{ fontWeight: 600 }}>${breakEven.toFixed(2)}</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: '#888' }}>Maker Fee</div>
+                                                    <div style={{ fontWeight: 600 }}>{(maker * 100).toFixed(2)}%</div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: '#888' }}>Taker Fee</div>
+                                                    <div style={{ fontWeight: 600 }}>{(taker * 100).toFixed(2)}%</div>
                                                 </div>
                                                 <div>
                                                     <div style={{ color: '#888' }}>Round-trip Fees</div>
@@ -1407,6 +1530,16 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                     )}
                                 </div>
                             )}
+                            {Array.isArray(latestRec.aiMemory) && latestRec.aiMemory.length > 0 && (
+                                <div style={{ gridColumn: '1 / span 2', marginTop: '0.5rem' }}>
+                                    <div style={{ color: '#666', fontSize: '0.85rem' }}>AI Memory</div>
+                                    <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                                        {latestRec.aiMemory.map((m, idx) => (
+                                            <li key={idx} style={{ margin: '0.2rem 0' }}>{m}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                             {latestRec.reasoning && (
                                 <div style={{ gridColumn: '1 / span 2' }}>
                                     <div style={{ color: '#666', fontSize: '0.85rem' }}>Reasoning</div>
@@ -1540,6 +1673,12 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                                         <span style={{ color: '#888' }}>Price:</span>
                                                         <div>${safeParseFloat(order.price).toFixed(2)}</div>
                                                     </div>
+                                                    {(order.type && order.type.includes('STOP')) && (
+                                                        <div>
+                                                            <span style={{ color: '#888' }}>Stop Trigger:</span>
+                                                            <div>${safeParseFloat(order.stopPrice || order.price).toFixed(2)}</div>
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <span style={{ color: '#888' }}>Orig Qty:</span>
                                                         <div>{safeParseFloat(order.origQty).toFixed(6)} ETH</div>
@@ -1612,6 +1751,9 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                 const kind = t.isBuyer ? 'BUY' : 'SELL';
                                 const isOcoSell = !t.isBuyer && (t.orderListId !== null && t.orderListId !== undefined);
                                 const leg = isOcoSell ? (orderTypeById[t.orderId] || null) : null;
+                                const meta = orderMetaById[t.orderId] || {};
+                                const isExpanded = !!expandedHistory[i];
+                                const toggleExpand = () => setExpandedHistory(prev => ({ ...prev, [i]: !prev[i] }));
                                 // For BUY trades, see if an OCO was created for this entry order
                                 const ocoMeta = t.isBuyer ? entryOcoByOrderId[t.orderId] : null;
                                 const ocoStatus = ocoMeta ? summarizeOcoStatus(ocoMeta.exitOrders) : null;
@@ -1621,49 +1763,128 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                         .map(k => `${k}: ${ocoMeta.exitOrders[k]}`)
                                         .join(' | ')
                                     : '';
+                                const qtyVal = safeParseFloat(t.quantity || t.qty || t.executedQty);
+                                const priceVal = safeParseFloat(t.price);
                                 return (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderTop: i === 0 ? 'none' : '1px solid #eee' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                            <span style={{ fontWeight: 600, color: t.isBuyer ? '#10b981' : '#ef4444' }}>{kind}</span>
-                                            <span style={{ color: '#666' }}>{safeParseFloat(t.quantity || t.qty || t.executedQty).toFixed(6)} ETH @ ${safeParseFloat(t.price).toFixed(2)}</span>
-                                            {/* SELLs that belong to OCO */}
-                                            {isOcoSell && (
-                                                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #16a34a', background: '#dcfce7', color: '#166534' }}>
-                                                    {leg === 'TP' ? 'OCO TP Fill' : leg === 'SL' ? 'OCO SL Fill' : 'OCO Fill'}
-                                                </span>
-                                            )}
-                                            {/* BUYs with attached OCO */}
-                                            {t.isBuyer && ocoMeta && (
-                                                <span style={ocoBadgeStyles(ocoStatus)} title={`OCO #${ocoMeta.ocoOrderListId}${ocoTooltip ? ' — ' + ocoTooltip : ''}`}>
-                                                    OCO: {ocoStatus}
-                                                </span>
-                                            )}
-                                            {/* Order meta: type/status/maker-taker */}
-                                            {(() => {
-                                                const meta = orderMetaById[t.orderId] || {};
-                                                const typeLabel = meta.type || (t.isMaker ? 'LIMIT?' : 'MARKET?');
-                                                const tif = meta.timeInForce ? `/${meta.timeInForce}` : '';
-                                                const tooltip = buildOrderTooltip(meta, t);
-                                                return (
-                                                    <>
-                                                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8' }}
-                                                            title={tooltip}>
-                                                            {typeLabel}{tif && ` ${tif}`}
-                                                        </span>
-                                                        {meta.status && (
-                                                            <span style={statusBadgeStyles(meta.status)} title={tooltip}>
-                                                                {meta.status}
+                                    <div key={i} style={{ padding: '0.5rem 0', borderTop: i === 0 ? 'none' : '1px solid #eee' }}>
+                                        <div onClick={toggleExpand} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.75rem', color: '#999' }}>{isExpanded ? '▼' : '▶'}</span>
+                                                <span style={{ fontWeight: 600, color: t.isBuyer ? '#10b981' : '#ef4444' }}>{kind}</span>
+                                                <span style={{ color: '#666' }}>{qtyVal.toFixed(6)} ETH @ ${priceVal.toFixed(2)}</span>
+                                                {/* SELLs that belong to OCO */}
+                                                {isOcoSell && (
+                                                    <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #16a34a', background: '#dcfce7', color: '#166534' }}>
+                                                        {leg === 'TP' ? 'OCO TP Fill' : leg === 'SL' ? 'OCO SL Fill' : 'OCO Fill'}
+                                                    </span>
+                                                )}
+                                                {/* BUYs with attached OCO */}
+                                                {t.isBuyer && ocoMeta && (
+                                                    <span style={ocoBadgeStyles(ocoStatus)} title={`OCO #${ocoMeta.ocoOrderListId}${ocoTooltip ? ' — ' + ocoTooltip : ''}`}>
+                                                        OCO: {ocoStatus}
+                                                    </span>
+                                                )}
+                                                {/* Order meta: type/status/maker-taker */}
+                                                {(() => {
+                                                    const typeLabel = meta.type || (t.isMaker ? 'LIMIT?' : 'MARKET?');
+                                                    const tif = meta.timeInForce ? `/${meta.timeInForce}` : '';
+                                                    const tooltip = buildOrderTooltip(meta, t);
+                                                    return (
+                                                        <>
+                                                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8' }}
+                                                                title={tooltip}>
+                                                                {typeLabel}{tif && ` ${tif}`}
                                                             </span>
-                                                        )}
-                                                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e' }}
-                                                            title={t.isMaker ? 'Maker (limit resting on book)' : 'Taker (market/marketable)'}>
-                                                            {t.isMaker ? 'MAKER' : 'TAKER'}
-                                                        </span>
-                                                    </>
-                                                );
-                                            })()}
+                                                            {meta.status && (
+                                                                <span style={statusBadgeStyles(meta.status)} title={tooltip}>
+                                                                    {meta.status}
+                                                                </span>
+                                                            )}
+                                                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e' }}
+                                                                title={t.isMaker ? 'Maker (limit resting on book)' : 'Taker (market/marketable)'}>
+                                                                {t.isMaker ? 'MAKER' : 'TAKER'}
+                                                            </span>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                            <div style={{ color: '#666' }}>{t.time ? new Date(t.time).toLocaleString() : '—'}</div>
                                         </div>
-                                        <div style={{ color: '#666' }}>{t.time ? new Date(t.time).toLocaleString() : '—'}</div>
+                                        {isExpanded && (
+                                            <div style={{ marginTop: '0.5rem', background: 'white', border: '1px solid #e5e7eb', borderRadius: 6, padding: '0.75rem', fontSize: '0.85rem' }}>
+                                                <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#666' }}>📄 Trade Details</div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Trade ID:</span>
+                                                        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>#{t.id}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Order ID:</span>
+                                                        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>#{t.orderId}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>OCO List:</span>
+                                                        <div>{t.orderListId !== null && t.orderListId !== undefined ? `#${t.orderListId}` : '—'}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Symbol:</span>
+                                                        <div>{t.symbol}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Side:</span>
+                                                        <div style={{ color: t.isBuyer ? '#10b981' : '#ef4444' }}>{kind}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Type / TIF:</span>
+                                                        <div>{meta.type || '—'}{meta.timeInForce ? ` / ${meta.timeInForce}` : ''}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Maker/Taker:</span>
+                                                        <div>{t.isMaker ? 'MAKER' : 'TAKER'}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Price:</span>
+                                                        <div>${priceVal.toFixed(2)}</div>
+                                                    </div>
+                                                    {(meta.type && meta.type.toUpperCase().includes('STOP') && meta.stopPrice != null) && (
+                                                        <div>
+                                                            <span style={{ color: '#888' }}>Stop Trigger:</span>
+                                                            <div>${safeParseFloat(meta.stopPrice).toFixed(2)}</div>
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Quantity:</span>
+                                                        <div>{qtyVal.toFixed(6)} ETH</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Quote:</span>
+                                                        <div>${safeParseFloat(t.quoteQty).toFixed(2)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Commission:</span>
+                                                        <div>{safeParseFloat(t.commission).toFixed(6)} {t.commissionAsset || ''}{(() => { const q = safeParseFloat(t.quoteQty); const c = safeParseFloat(t.commission); return q > 0 ? ` (${((c / q) * 100).toFixed(4)}%)` : ''; })()}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Status:</span>
+                                                        <div>{meta.status || '—'}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Client Order ID:</span>
+                                                        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{meta.clientOrderId || '—'}</div>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#888' }}>Time:</span>
+                                                        <div>{t.time ? new Date(t.time).toLocaleString() : '—'}</div>
+                                                    </div>
+                                                    {isOcoSell && (
+                                                        <div>
+                                                            <span style={{ color: '#888' }}>OCO Leg:</span>
+                                                            <div>{leg || '—'}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}

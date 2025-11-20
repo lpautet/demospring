@@ -101,4 +101,18 @@ public record Binance24hrTicker(
     public boolean isPriceUp() {
         return priceChange.compareTo(BigDecimal.ZERO) > 0;
     }
+    
+    /**
+     * Get bid price as double
+     */
+    public double bidPriceAsDouble() {
+        return bidPrice.doubleValue();
+    }
+    
+    /**
+     * Get ask price as double
+     */
+    public double askPriceAsDouble() {
+        return askPrice.doubleValue();
+    }
 }

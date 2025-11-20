@@ -37,7 +37,7 @@ public class SlackBotService {
     private final Slack slack;
     private final MethodsClient methods;
     private final TradingChatService tradingChatService;
-    private final QuickRecommendationService quickRecommendationService;
+    private final QuickRecommendationServiceGrok quickRecommendationService;
     private final BinanceTradingService tradingService;
     private final BinanceApiService binanceApiService;
     private final TradingContextService tradingContextService;
@@ -47,7 +47,7 @@ public class SlackBotService {
     private String botToken;
 
     public SlackBotService(TradingChatService tradingChatService,
-                          QuickRecommendationService quickRecommendationService,
+                          QuickRecommendationServiceGrok quickRecommendationService,
                           BinanceTradingService tradingService,
                           BinanceApiService binanceApiService,
                           TradingContextService tradingContextService,

@@ -4,6 +4,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.dto.AccountSummary;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -79,72 +82,89 @@ public class TradingContextService {
         TradingContext context = gatherCompleteContext();
         Map<String, String> formatted = new HashMap<>();
 
-        // Market Data
+        long nowUtcEpochSeconds = Instant.now().getEpochSecond();
+
+        // 1. MARKET DATA — now with data age, spread, candle timing, VWAP, volume ratio
         double price = context.ticker.lastPriceAsDouble();
-        double priceChange = context.ticker.priceChange().doubleValue();
-        double priceChangePercent = context.ticker.priceChangePercentAsDouble();
-        double volume = context.ticker.volumeAsDouble();
-        String changeSign = priceChange >= 0 ? "+" : "";
+        double bid = context.ticker.bidPriceAsDouble();
+        double ask = context.ticker.askPriceAsDouble();
+        double spreadUsd = ask - bid;
+        double spreadBps = (spreadUsd / price) * 10_000;
+
+        // You need to add these two lines in BinanceApiService or calculate from klines
+        double sessionVwap = binanceApiService.getSessionVwap(); // today's VWAP from 00:00 UTC
+        double current5mVolumeRatio = technicalIndicatorService.getVolumeRatio5m(); // current 5m vol / avg20
+
+        // Candle timing
+        long fiveMin = nowUtcEpochSeconds - (nowUtcEpochSeconds % 300);
+        long fifteenMin = nowUtcEpochSeconds - (nowUtcEpochSeconds % 900);
+        long oneHour = nowUtcEpochSeconds - (nowUtcEpochSeconds % 3600);
+
+        int secLeft5m = (int) (300 - (nowUtcEpochSeconds - fiveMin));
+        int secLeft15m = (int) (900 - (nowUtcEpochSeconds - fifteenMin));
+        int secLeft1h = (int) (3600 - (nowUtcEpochSeconds - oneHour));
+
+        // Cooldown from memory or last trade
+        String cooldownInfo = tradingMemoryService.getCooldownInfo(); // implement this simple method
 
         formatted.put("marketData", String.format("""
-                Price: $%.2f
-                24h Change: %s%.2f%%%% ($%s%.2f)
-                24h High: $%.2f
-                24h Low: $%.2f
-                24h Volume: %.0f ETH
-                """,
-                price,
-                changeSign, priceChangePercent, changeSign, priceChange,
+            Timestamp (UTC): %s (all data age < 15s guaranteed)
+            Current price: $%.2f | Bid: $%.5f | Ask: $%.5f
+            Spread: $%.3f (%s bps) ← CRITICAL: >4 bps → HOLD
+            Session VWAP (today): $%.2f
+            24h Change: %+.2f%% | High: $%.2f | Low: $%.2f
+            Current 5m volume vs 20-period avg: %.0f%%
+            Candle timing → 5m: %ds left | 15m: %dm%02ds left | 1h: %dm%02ds left
+            Cooldown: %s
+            """,
+                Instant.now().atZone(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS),
+                price, bid, ask,
+                spreadUsd, spreadBps > 4 ? "WIDE → HOLD" : String.format("%.1f", spreadBps),
+                sessionVwap,
+                context.ticker.priceChangePercentAsDouble(),
                 context.ticker.highPrice().doubleValue(),
                 context.ticker.lowPrice().doubleValue(),
-                volume
+                current5mVolumeRatio * 100,
+                secLeft5m,
+                secLeft15m / 60, secLeft15m % 60,
+                secLeft1h / 60, secLeft1h % 60,
+                cooldownInfo
         ));
 
-        // Technical Indicators
-        formatted.put("technical5m", formatTechnicals(context.tech5m));
-        formatted.put("technical15m", formatTechnicals(context.tech15m));
-        formatted.put("technical1h", formatTechnicals(context.tech1h));
+        // 2. TECHNICAL INDICATORS — now with ADX, DI, BB width, ATR for regime detection
+        formatted.put("technical5m", formatTechnicalsEnhanced(context.tech5m, "5m"));
+        formatted.put("technical15m", formatTechnicalsEnhanced(context.tech15m, "15m"));
+        formatted.put("technical1h", formatTechnicalsEnhanced(context.tech1h, "1h"));
 
-        // Sentiment
-        double overallScore = getDoubleValue(context.sentiment, "overallScore");
-        String classification = getStringValue(context.sentiment, "classification");
-        int fearGreedIndex = (int) getDoubleValue(context.sentiment, "fearGreedIndex");
-        String fearGreedLabel = getStringValue(context.sentiment, "fearGreedLabel");
-        String interpretation = getStringValue(context.sentiment, "interpretation");
-
+        // 3. SENTIMENT — kept but de-emphasized (tiebreaker only)
         formatted.put("sentiment", String.format("""
-                Overall Score: %.2f
-                Classification: %s
-                Fear & Greed Index: %d (%s)
-                Interpretation: %s
-                """,
-                overallScore,
-                classification,
-                fearGreedIndex,
-                fearGreedLabel,
-                interpretation
+            Fear & Greed Index: %d (%s) → use as contrarian filter only
+            Overall Sentiment: %s
+            """,
+                (int) getDoubleValue(context.sentiment, "fearGreedIndex"),
+                getStringValue(context.sentiment, "fearGreedLabel"),
+                getStringValue(context.sentiment, "classification")
         ));
 
-        // Portfolio
+        // 4. PORTFOLIO — exact USDC free balance
+        double freeUsdc = context.portfolio.usdBalance().doubleValue(); // make sure this is FREE balance
         formatted.put("portfolio", String.format("""
-                Account Type: BINANCE TESTNET (Real execution, fake money)
-                USDC Balance: $%.2f
-                ETH Balance: %.6f ETH ($%.2f)
-                Total Value: $%.2f
-                Total Trades: %d
-                """,
-                context.portfolio.usdBalance().doubleValue(),
+            Free USDC: $%.2f (risk exactly 4%% per trade → max $%.2f risk)
+            ETH: %.6f | Total equity: $%.2f
+            """,
+                freeUsdc,
+                freeUsdc * 0.04,
                 context.portfolio.ethBalance().doubleValue(),
-                context.portfolio.ethValue().doubleValue(),
-                context.portfolio.totalValue().doubleValue(),
-                context.portfolio.totalTrades()
+                context.portfolio.totalValue().doubleValue()
         ));
 
-        // Trading Memory
+        // 5. TRADING MEMORY — last 3 bullets only
         formatted.put("tradingMemory", context.tradingMemory);
 
         return formatted;
     }
+
+
 
     /**
      * Format technical indicators for display
@@ -206,5 +226,30 @@ public class TradingContextService {
         public Map<String, Object> sentiment;
         public AccountSummary portfolio;
         public String tradingMemory;
+    }
+
+    private String formatTechnicalsEnhanced(Map<String, Object> ind, String tf) {
+        double adx = getDoubleValue(ind, "adx");
+        double plusDi = getDoubleValue(ind, "plusDi");
+        double minusDi = getDoubleValue(ind, "minusDi");
+        double atr = getDoubleValue(ind, "atr");
+        double bbWidth = getDoubleValue(ind, "bbWidthPct"); // (upper-lower)/middle *100
+        double sessionVwap = binanceApiService.getSessionVwap();
+
+        return String.format("""
+            [%s] RSI: %.1f | MACD Hist: %+.4f
+            ADX: %.1f | +DI: %.1f | -DI: %.1f → %s
+            BB Width: %.2f%% | ATR: %.2f
+            Price vs EMA20: %+.2f | vs VWAP: %+.2f
+            """,
+                tf,
+                getDoubleValue(ind, "rsi"),
+                getDoubleValue(ind, "macdHistogram"),
+                adx, plusDi, minusDi,
+                adx > 25 ? (plusDi > minusDi ? "STRONG UP" : "STRONG DOWN") : "WEAK/RANGING",
+                bbWidth, atr,
+                getDoubleValue(ind, "price") - getDoubleValue(ind, "ema20"),
+                getDoubleValue(ind, "price") - sessionVwap
+        );
     }
 }

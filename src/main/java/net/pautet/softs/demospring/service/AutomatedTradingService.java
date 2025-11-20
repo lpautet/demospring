@@ -35,7 +35,7 @@ import java.math.RoundingMode;
 @Slf4j
 public class AutomatedTradingService {
 
-    private final QuickRecommendationService quickRecommendationService;
+    private final QuickRecommendationServiceGrok quickRecommendationService;
     private final BinanceTradingService tradingService;
     private final RecommendationPersistenceService persistenceService;
     private final BinanceApiService binanceApiService;
@@ -45,11 +45,11 @@ public class AutomatedTradingService {
     private static final String BOT_CHANNEL = "ethbot";
     private static final String DEFAULT_USERNAME = "automated-trader";
 
-    public AutomatedTradingService(QuickRecommendationService quickRecommendationService,
-                                  BinanceTradingService tradingService,
-                                  RecommendationPersistenceService persistenceService,
-                                  SlackConfig slackConfig,
-                                  BinanceApiService binanceApiService) {
+    public AutomatedTradingService(QuickRecommendationServiceGrok quickRecommendationService,
+                                   BinanceTradingService tradingService,
+                                   RecommendationPersistenceService persistenceService,
+                                   SlackConfig slackConfig,
+                                   BinanceApiService binanceApiService) {
         this.quickRecommendationService = quickRecommendationService;
         this.tradingService = tradingService;
         this.persistenceService = persistenceService;
@@ -177,7 +177,7 @@ public class AutomatedTradingService {
      */
     private FeeCheck computeFeeCheck(TradeRecommendation rec) {
         try {
-            if (rec.signal() != TradeRecommendation.Signal.BUY || rec.takeProfit1() == null) {
+            if (rec.signal() != TradeRecommendation.Signal.BUY || rec.tp1() == null) {
                 return null;
             }
             var fees = binanceApiService.getTradeFees(BinanceTradingService.SYMBOL_ETHUSDC);
@@ -191,7 +191,7 @@ public class AutomatedTradingService {
                 return null;
             }
 
-            BigDecimal tpDelta = rec.takeProfit1().subtract(entryPrice);
+            BigDecimal tpDelta = rec.tp1().subtract(entryPrice);
             BigDecimal pctToTp = tpDelta.divide(entryPrice, 8, RoundingMode.HALF_UP).max(BigDecimal.ZERO);
             return new FeeCheck(pctToTp, roundTrip);
         } catch (Exception e) {
@@ -303,14 +303,14 @@ public class AutomatedTradingService {
                 if (rec.signal() == TradeRecommendation.Signal.BUY
                         && rec.entryType() != TradeRecommendation.EntryType.LIMIT
                         && order.isFilled()
-                        && rec.takeProfit1() != null && rec.stopLoss() != null) {
-                    var oco = tradingService.placeOcoSellExit(order.executedQty(), rec.takeProfit1(), rec.stopLoss());
+                        && rec.tp1() != null && rec.stopLoss() != null) {
+                    var oco = tradingService.placeOcoSellExit(order.executedQty(), rec.tp1(), rec.stopLoss());
                     // Persist OCO linkage
                     try {
                         persistenceService.attachOcoDetailsByEntryOrderId(order.orderId(), oco);
                     } catch (Exception ignore) {}
                     postToEthBot(channelId, String.format("📌 Placed OCO exit: TP $%.2f / SL $%.2f for %.6f ETH",
-                            rec.takeProfit1(), rec.stopLoss(), order.executedQty()));
+                            rec.tp1(), rec.stopLoss(), order.executedQty()));
                 } else if (rec.signal() == TradeRecommendation.Signal.BUY
                         && rec.entryType() == TradeRecommendation.EntryType.LIMIT) {
                     postToEthBot(channelId, "ℹ️ Limit BUY placed. OCO exit will not be set until the entry fills.");

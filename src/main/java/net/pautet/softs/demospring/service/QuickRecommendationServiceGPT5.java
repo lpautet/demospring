@@ -2,10 +2,12 @@ package net.pautet.softs.demospring.service;
 
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.dto.TradeRecommendation;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -34,11 +36,22 @@ import java.util.Map;
  */
 @Service
 @Slf4j
-public class QuickRecommendationService {
+public class QuickRecommendationServiceGPT5 {
 
-    private final ChatModel chatModel;
+    private final ChatClient chatClient;
     private final TradingContextService tradingContextService;
     private final RecommendationPersistenceService persistenceService;
+    
+    @Value("${openai.flex.enabled:false}")
+    private boolean flexEnabled;
+
+    public QuickRecommendationServiceGPT5(ChatModel chatModel,
+                                         TradingContextService tradingContextService,
+                                         RecommendationPersistenceService persistenceService) {
+        this.chatClient = ChatClient.builder(chatModel).build();
+        this.tradingContextService = tradingContextService;
+        this.persistenceService = persistenceService;
+    }
 
     private static final String QUICK_RECOMMENDATION_PROMPT = """
             You are an expert cryptocurrency day-trading analyst. Analyze and produce an execution-ready plan for ETH/USDC on Binance spot only.
@@ -101,13 +114,25 @@ public class QuickRecommendationService {
             {format}
             """;
 
-    public QuickRecommendationService(ChatModel chatModel,
-                                     TradingContextService tradingContextService,
-                                     RecommendationPersistenceService persistenceService) {
-        this.chatModel = chatModel;
-        this.tradingContextService = tradingContextService;
-        this.persistenceService = persistenceService;
+    private static final String JSON_FORMAT = """
+    {
+      "signal": "BUY|SELL|HOLD",
+      "confidence": "HIGH|MEDIUM|LOW",
+      "expectedRR": number or null,
+      "regime": "single sentence with evidence",
+      "reasoning": "2-4 sentences with prices and R:R calc",
+      "amountUsd": number or null,
+      "amountEth": number or null,
+      "amountType": "USD|ETH|NONE",
+      "entryType": "MARKET|LIMIT|null",
+      "entryPrice": number or null,
+      "stopLoss": number or null,
+      "tp1": number or null,
+      "tp2": number or null,
+      "cooldownUntil": "ISO8601 or null",
+      "memory": ["bullet 1", "bullet 2", "bullet 3"]
     }
+    """;
 
     /**
      * Get quick trading recommendation with all context pre-loaded
@@ -132,9 +157,36 @@ public class QuickRecommendationService {
 
             // Single AI call with all context + JSON schema
             PromptTemplate promptTemplate = new PromptTemplate(QUICK_RECOMMENDATION_PROMPT);
-            Prompt prompt = promptTemplate.create(context);
-            
-            String response = chatModel.call(prompt).getResult().getOutput().getContent();
+            String renderedPrompt = promptTemplate.render(context);
+
+            String response;
+            if (flexEnabled) {
+                log.debug("Using Flex tier for cost savings (may add 10-60s latency)");
+                try {
+                    response = chatClient.prompt()
+                            .user(renderedPrompt)
+                            .options(OpenAiChatOptions.builder()
+                                    .serviceTier("flex")
+                                    .build())
+                            .call()
+                            .content();
+                } catch (Exception flexException) {
+                    log.warn("Flex tier unavailable, retrying with standard tier", flexException);
+                    response = chatClient.prompt()
+                            .user(renderedPrompt)
+                            .options(OpenAiChatOptions.builder()
+                                    .serviceTier("auto")
+                                    .build())
+                            .call()
+                            .content();
+                }
+            } else {
+                log.debug("Using standard tier (Flex disabled)");
+                response = chatClient.prompt()
+                        .user(renderedPrompt)
+                        .call()
+                        .content();
+            }
             log.debug("Raw AI response: {}", response);
             
             // Parse structured output

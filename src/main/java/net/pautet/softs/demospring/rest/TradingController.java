@@ -169,8 +169,10 @@ public class TradingController {
     public java.util.List<Object[]> getETHKlines(
             @RequestParam(defaultValue = "ETHUSDC") String symbol,
             @RequestParam(defaultValue = "1h") String interval,
-            @RequestParam(defaultValue = "100") int limit) {
-        log.debug("GET /api/trading/eth/klines - symbol: {}, interval: {}, limit: {}", symbol, interval, limit);
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) Long endTime) {
+        log.debug("GET /api/trading/eth/klines - symbol: {}, interval: {}, limit: {}, startTime: {}, endTime: {}", symbol, interval, limit, startTime, endTime);
         
         // Validate interval
         if (!isValidInterval(interval)) {
@@ -183,7 +185,7 @@ public class TradingController {
         }
         
         // Get typed klines and convert to array format for frontend
-        var klines = binanceApiService.getKlines(symbol, interval, limit);
+        var klines = binanceApiService.getKlines(symbol, interval, limit, startTime, endTime);
         return klines.stream()
                 .map(k -> new Object[] {
                     k.openTime(),

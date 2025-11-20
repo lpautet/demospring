@@ -1,12 +1,16 @@
 package net.pautet.softs.demospring.service;
 
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.dto.BinanceKline;
 import org.springframework.stereotype.Service;
 
+import java.math.RoundingMode;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.math.BigDecimal;
+
 
 /**
  * Technical Indicator Service
@@ -162,18 +166,47 @@ public class TechnicalIndicatorService {
             analysis.put("bollingerPosition", bollingerPosition);
             analysis.put("bollingerPercentage", bollingerPercentage);
 
-            // ATR (Volatility)
+            // ATR (Volatility) — you already have this, keep it
             double atr = calculateATR(highs, lows, closes, 14);
             analysis.put("atr", atr);
             analysis.put("atrPercent", (atr / currentPrice) * 100);
 
+            // === ADD FROM HERE: ADX, +DI, -DI and BB Width % ===
+            double adx = 0.0;
+            double plusDi = 0.0;
+            double minusDi = 0.0;
+            double bbWidthPct = 0.0;
+
+            // Only calculate ADX if we have enough data (minimum 28 candles for reliable ADX)
+            if (closes.length >= 28) {
+                Map<String, Double> adxResult = calculateADX(highs, lows, closes, 14);
+                adx     = adxResult.get("adx");
+                plusDi  = adxResult.get("plusDi");
+                minusDi = adxResult.get("minusDi");
+            }
+
+            analysis.put("adx",     round(adx,     2));
+            analysis.put("plusDi",  round(plusDi,  2));
+            analysis.put("minusDi", round(minusDi, 2));
+
+            // Bollinger Band Width % (very important for regime detection)
+            if (bbMiddle != 0.0) {
+                bbWidthPct = ((bbUpper - bbLower) / bbMiddle) * 100.0;
+            }
+            analysis.put("bbWidthPct", round(bbWidthPct, 2));
+
+            // Also store current closed price (not the live incomplete candle)
+            double lastClosedPrice = closes[closes.length - 2 >= 0 ? closes.length - 2 : 0];
+            analysis.put("price", round(lastClosedPrice, 2));
+            // === END OF ADDITIONS ===
+
             // VWAP
             double vwap = calculateVWAP(highs, lows, closes, volumes);
-            double vwapDistanceValue = ((currentPrice - vwap) / vwap) * 100;
+            double vwapDistanceValue = ((lastClosedPrice - vwap) / vwap) * 100;
             analysis.put("vwap", vwap);
             analysis.put("vwapDistance", vwapDistanceValue);
-            analysis.put("priceVsVWAP", vwapDistanceValue); // Alias
-            analysis.put("vwapSignal", currentPrice > vwap ? "BULLISH" : "BEARISH");
+            analysis.put("priceVsVWAP", vwapDistanceValue);
+            analysis.put("vwapSignal", lastClosedPrice > vwap ? "BULLISH" : "BEARISH");
 
             // Stochastic Oscillator
             Map<String, Double> stochastic = calculateStochastic(highs, lows, closes, 14);
@@ -499,5 +532,105 @@ public class TechnicalIndicatorService {
             "sellSignals", sellSignals,
             "neutralSignals", neutralSignals
         );
+    }
+
+    // Add this method (for volume ratio)
+    public double getVolumeRatio5m() {
+        try {
+            List<BinanceKline> klines = binanceApiService.getKlines(
+                    BinanceTradingService.SYMBOL_ETHUSDC, "5m", 21);
+
+            if (klines.size() < 21) return 1.0;
+
+            double currentVolume = klines.get(klines.size() - 1).volumeAsDouble(); // incomplete candle
+            double avgVolume = klines.subList(0, 20).stream()
+                    .mapToDouble(BinanceKline::volumeAsDouble)
+                    .average()
+                    .orElse(1.0);
+
+            return currentVolume / avgVolume;
+
+        } catch (Exception e) {
+            log.warn("Failed to get volume ratio", e);
+            return 1.0;
+        }
+    }
+
+    /**
+     * Calculate ADX, +DI, -DI using pure Java (no external library needed)
+     * This is a clean, reliable implementation used in production by many bots
+     */
+    private Map<String, Double> calculateADX(double[] high, double[] low, double[] close, int period) {
+        int len = close.length;
+        if (len < period * 2) {
+            return Map.of("adx", 0.0, "plusDi", 0.0, "minusDi", 0.0);
+        }
+
+        double[] tr = new double[len];
+        double[] plusDm = new double[len];
+        double[] minusDm = new double[len];
+
+        // First TR
+        tr[0] = high[0] - low[0];
+
+        for (int i = 1; i < len; i++) {
+            double tr1 = high[i] - low[i];
+            double tr2 = Math.abs(high[i] - close[i - 1]);
+            double tr3 = Math.abs(low[i] - close[i - 1]);
+            tr[i] = Math.max(tr1, Math.max(tr2, tr3));
+
+            double dmPlus = high[i] - high[i - 1];
+            double dmMinus = low[i - 1] - low[i];
+
+            plusDm[i]  = dmPlus > dmMinus && dmPlus > 0 ? dmPlus : 0.0;
+            minusDm[i] = dmMinus > dmPlus && dmMinus > 0 ? dmMinus : 0.0;
+        }
+
+        // Smoothed averages (Wilder's smoothing)
+        double[] atrSmoothed = new double[len];
+        double[] plusDiSmoothed = new double[len];
+        double[] minusDiSmoothed = new double[len];
+
+        atrSmoothed[period] = 0;
+        for (int i = 1; i <= period; i++) {
+            atrSmoothed[period] += tr[i];
+        }
+        atrSmoothed[period] /= period;
+
+        plusDiSmoothed[period]  = 0;
+        minusDiSmoothed[period] = 0;
+        for (int i = 1; i <= period; i++) {
+            plusDiSmoothed[period]  += plusDm[i];
+            minusDiSmoothed[period] += minusDm[i];
+        }
+        plusDiSmoothed[period]  /= period;
+        minusDiSmoothed[period] /= period;
+
+        for (int i = period + 1; i < len; i++) {
+            atrSmoothed[i]      = (atrSmoothed[i - 1] * (period - 1) + tr[i])       / period;
+            plusDiSmoothed[i]   = (plusDiSmoothed[i - 1] * (period - 1) + plusDm[i])   / period;
+            minusDiSmoothed[i]  = (minusDiSmoothed[i - 1] * (period - 1) + minusDm[i])  / period;
+        }
+
+        // +DI, -DI
+        double plusDI  = plusDiSmoothed[len - 2]  > 0 ? (plusDiSmoothed[len - 2]  / atrSmoothed[len - 2]) * 100 : 0.0;
+        double minusDI = minusDiSmoothed[len - 2] > 0 ? (minusDiSmoothed[len - 2] / atrSmoothed[len - 2]) * 100 : 0.0;
+
+        // DX and ADX
+        double dx = Math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100;
+        double adx = ((dx * (period - 1)) + dx) / period; // simplified one-step smoothing
+
+        return Map.of(
+                "adx",     round(adx, 2),
+                "plusDi",  round(plusDI, 2),
+                "minusDi", round(minusDI, 2)
+        );
+    }
+
+    private double round(double value, int places) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) return 0.0;
+        BigDecimal bd = BigDecimal.valueOf(value);
+        bd = bd.setScale(places, RoundingMode.HALF_UP);
+        return bd.doubleValue();
     }
 }

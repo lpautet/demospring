@@ -17,11 +17,16 @@ import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static net.pautet.softs.demospring.service.BinanceTradingService.SYMBOL_ETHUSDC;
 
 /**
  * Service for making Binance API calls.
@@ -246,15 +251,28 @@ public class BinanceApiService {
      * @return List of klines/candlesticks
      */
     public List<BinanceKline> getKlines(String symbol, String interval, int limit) {
-        log.debug("Fetching {} klines - interval: {} limit: {} (cache miss)", symbol, interval, limit);
+        return getKlines(symbol, interval, limit, null, null);
+    }
+
+    /**
+     * Get candlestick data (klines) with optional time bounds
+     * @param startTime inclusive start time in ms (optional)
+     * @param endTime inclusive end time in ms (optional)
+     */
+    public List<BinanceKline> getKlines(String symbol, String interval, int limit, Long startTime, Long endTime) {
+        log.debug("Fetching {} klines - interval: {} limit: {} startTime: {} endTime: {} (cache miss)", symbol, interval, limit, startTime, endTime);
         RestClient client = createBinanceApiClient();
         return client.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/v3/klines")
-                        .queryParam(PARAM_SYMBOL, symbol)
-                        .queryParam("interval", interval)
-                        .queryParam("limit", limit)
-                        .build())
+                .uri(uriBuilder -> {
+                    var builder = uriBuilder
+                            .path("/api/v3/klines")
+                            .queryParam(PARAM_SYMBOL, symbol)
+                            .queryParam("interval", interval)
+                            .queryParam("limit", limit);
+                    if (startTime != null) builder.queryParam("startTime", startTime);
+                    if (endTime != null) builder.queryParam("endTime", endTime);
+                    return builder.build();
+                })
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<BinanceKline>>() {});
     }
@@ -515,5 +533,37 @@ public class BinanceApiService {
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
                 .build();
+    }
+
+
+
+    // Add this method
+    public double getSessionVwap() {
+        try {
+            ZonedDateTime now = Instant.now().atZone(ZoneOffset.UTC);
+            ZonedDateTime startOfDay = now.toLocalDate().atStartOfDay(ZoneOffset.UTC);
+
+            List<BinanceKline> klines = getKlines(
+                    SYMBOL_ETHUSDC,
+                    "5m",
+                    (int) ((now.toEpochSecond() - startOfDay.toEpochSecond()) / 300)  // number of 5m candles
+            );
+
+            double totalVolume = 0.0;
+            double volumePriceSum = 0.0;
+
+            for (BinanceKline k : klines) {
+                double price = (k.highAsDouble() + k.lowAsDouble() + k.closeAsDouble()) / 3.0; // typical price
+                double volume = k.volumeAsDouble();
+                volumePriceSum += price * volume;
+                totalVolume += volume;
+            }
+
+            return totalVolume > 0 ? volumePriceSum / totalVolume : get24hrTicker(SYMBOL_ETHUSDC).lastPriceAsDouble();
+
+        } catch (Exception e) {
+            log.warn("Failed to calculate session VWAP, using last price", e);
+            return get24hrTicker(SYMBOL_ETHUSDC).lastPriceAsDouble();
+        }
     }
 }

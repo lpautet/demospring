@@ -179,16 +179,16 @@ function RecommendationHistory() {
                 <p className="subtitle">Track AI's memory evolution and decision patterns</p>
             </div>
 
-            {/* Debug Info */}
-            <div style={{ background: '#f0f0f0', padding: '10px', marginBottom: '10px', fontSize: '12px', fontFamily: 'monospace' }}>
-                <strong>Debug Info:</strong><br/>
-                Loading: {loading ? 'Yes' : 'No'}<br/>
-                Recommendations Count: {recommendations.length}<br/>
-                Stats: {stats ? 'Loaded' : 'Not loaded'}<br/>
-                Error: {error || 'None'}<br/>
-                Token: {sessionStorage.getItem("token") ? 'Present' : 'Missing'}<br/>
-                <button onClick={() => console.log('Current state:', {recommendations, stats, error})}>Log State</button>
-            </div>
+            {/*/!* Debug Info *!/*/}
+            {/*<div style={{ background: '#f0f0f0', padding: '10px', marginBottom: '10px', fontSize: '12px', fontFamily: 'monospace' }}>*/}
+            {/*    <strong>Debug Info:</strong><br/>*/}
+            {/*    Loading: {loading ? 'Yes' : 'No'}<br/>*/}
+            {/*    Recommendations Count: {recommendations.length}<br/>*/}
+            {/*    Stats: {stats ? 'Loaded' : 'Not loaded'}<br/>*/}
+            {/*    Error: {error || 'None'}<br/>*/}
+            {/*    Token: {sessionStorage.getItem("token") ? 'Present' : 'Missing'}<br/>*/}
+            {/*    <button onClick={() => console.log('Current state:', {recommendations, stats, error})}>Log State</button>*/}
+            {/*</div>*/}
 
             {error && (
                 <div className="error-banner">

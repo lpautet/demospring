@@ -218,8 +218,6 @@ public class TradingChatService {
     public TradingChatService(ChatModel chatModel) {
         this.chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(SYSTEM_MESSAGE)
-                .defaultFunctions("getMarketData", "getPortfolio", "executePaperTrade", "getTradeHistory", 
-                                "getTechnicalIndicators", "getSentimentAnalysis")
                 .build();
     }
 

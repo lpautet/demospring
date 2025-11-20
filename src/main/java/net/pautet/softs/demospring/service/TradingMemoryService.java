@@ -216,4 +216,46 @@ public class TradingMemoryService {
         // Reset if more than 48 hours old
         return age.toHours() > 48;
     }
+    
+    /**
+     * Get cooldown information for trading context
+     * Returns human-readable cooldown status
+     */
+    public String getCooldownInfo() {
+        try {
+            var lastRec = repository.findFirstByOrderByTimestampDesc();
+            
+            if (lastRec.isEmpty()) {
+                return "No recent trades (no cooldown)";
+            }
+            
+            RecommendationHistory last = lastRec.get();
+            
+            // Check if there's an explicit cooldown timestamp
+            if (last.getCooldownUntil() != null) {
+                LocalDateTime cooldownEnd = last.getCooldownUntil();
+                LocalDateTime now = LocalDateTime.now();
+                
+                if (now.isBefore(cooldownEnd)) {
+                    long minutesLeft = Duration.between(now, cooldownEnd).toMinutes();
+                    return String.format("COOLDOWN ACTIVE until %s (%d min left)", 
+                        cooldownEnd.toString(), minutesLeft);
+                }
+            }
+            
+            // Otherwise check time since last trade
+            Duration timeSinceLast = Duration.between(last.getTimestamp(), LocalDateTime.now());
+            long minutesSince = timeSinceLast.toMinutes();
+            
+            if (minutesSince < 15) {
+                return String.format("Last trade %d min ago (min 15 min between trades)", minutesSince);
+            }
+            
+            return String.format("No cooldown (last trade %d min ago)", minutesSince);
+            
+        } catch (Exception e) {
+            log.warn("Failed to get cooldown info", e);
+            return "Cooldown status unknown";
+        }
+    }
 }

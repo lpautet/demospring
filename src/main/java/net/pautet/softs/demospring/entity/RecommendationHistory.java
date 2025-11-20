@@ -98,6 +98,13 @@ public class RecommendationHistory {
     private Integer timeHorizonMinutes;
 
     /**
+     * Cooldown timestamp - when the AI can make the next recommendation
+     * Used to enforce minimum time between trades
+     */
+    @Column
+    private LocalDateTime cooldownUntil;
+
+    /**
      * Exit orders metadata (e.g., OCO order list id and child order ids)
      */
     @Column
@@ -154,11 +161,20 @@ public class RecommendationHistory {
         history.setEntryType(rec.entryType());
         history.setEntryPrice(rec.entryPrice());
         history.setStopLoss(rec.stopLoss());
-        history.setTakeProfit1(rec.takeProfit1());
-        history.setTakeProfit2(rec.takeProfit2());
-        history.setTimeHorizonMinutes(rec.timeHorizonMinutes());
+        history.setTakeProfit1(rec.tp1());
+        history.setTakeProfit2(rec.tp2());
         history.setAiMemory(rec.memory());
         history.setExecuted(false);
+        
+        // Parse cooldownUntil from ISO-8601 string if present
+        if (rec.cooldownUntil() != null && !rec.cooldownUntil().isBlank()) {
+            try {
+                history.setCooldownUntil(LocalDateTime.parse(rec.cooldownUntil().replace("Z", "")));
+            } catch (Exception e) {
+                // If parsing fails, ignore cooldown
+            }
+        }
+        
         return history;
     }
 }

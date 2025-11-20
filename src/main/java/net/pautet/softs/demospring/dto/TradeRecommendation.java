@@ -6,151 +6,113 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import java.math.BigDecimal;
 import java.util.List;
 
-/**
- * AI-Generated Trade Recommendation
- * 
- * This record is used with Spring AI's structured output feature to get
- * type-safe, validated trading recommendations from the LLM.
- * 
- * Spring AI will generate a JSON schema from this class and include it in the prompt,
- * ensuring the LLM returns data in exactly this format.
- * 
- * NEW: Includes AI working memory for stateful recommendations across time.
- */
 public record TradeRecommendation(
-    
-    @JsonProperty(required = true)
-    @JsonPropertyDescription("Trading signal: BUY to enter position, SELL to exit, HOLD to wait")
-    Signal signal,
-    
-    @JsonProperty(required = true)
-    @JsonPropertyDescription("Confidence level based on indicator agreement: HIGH (3+ agree), MEDIUM (2 agree), LOW (conflicting)")
-    Confidence confidence,
-    
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Recommended trade amount as a number (e.g., 100.50 for USD or 0.05 for ETH). Null if signal is HOLD.")
-    BigDecimal amount,
-    
-    @JsonProperty(required = true)
-    AmountType amountType,
-    
-    @JsonProperty(required = true)
-    @JsonPropertyDescription("Brief 2-4 sentence explanation of the key factors driving this recommendation. Focus on technical signals, sentiment, and risk management.")
-    String reasoning,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("""
-        Your working memory to carry forward (max 3 concise bullet points):
-        1. Key patterns or hypotheses you're currently tracking
-        2. Important price levels, conditions, or triggers to monitor
-        3. What would invalidate or change your current thesis
-        Keep each point under 15 words. This helps maintain consistency across analyses.
-        """)
-    List<String> memory,
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("Trading signal: BUY, SELL or HOLD")
+        Signal signal,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Preferred entry type: MARKET for immediate execution or LIMIT for specified price.")
-    EntryType entryType,
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("Confidence: HIGH, MEDIUM or LOW")
+        Confidence confidence,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Entry price for LIMIT orders. Null for MARKET entries.")
-    BigDecimal entryPrice,
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("Expected R:R >= 2.00 for trades, null for HOLD")
+        BigDecimal expectedRR,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Proposed stop-loss price. Null for HOLD.")
-    BigDecimal stopLoss,
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("One-sentence regime with evidence")
+        String regime,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("First take-profit target price. Null for HOLD.")
-    BigDecimal takeProfit1,
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("USD amount when signal is BUY/SELL, null otherwise")
+        BigDecimal amountUsd,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Second (runner) take-profit or trailing reference price. Null if not applicable.")
-    BigDecimal takeProfit2,
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("ETH amount (rarely used), null otherwise")
+        BigDecimal amountEth,
 
-    @JsonProperty(required = false)
-    @JsonPropertyDescription("Intended holding period in minutes for this intraday setup (e.g., 10-120). Null for HOLD.")
-    Integer timeHorizonMinutes
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("USD, ETH or NONE")
+        AmountType amountType,
+
+        @JsonProperty(required = true)
+        @JsonPropertyDescription("2–4 sentences reasoning with prices, R:R calc, etc.")
+        String reasoning,
+
+        @JsonProperty(required = false)
+        EntryType entryType,
+
+        @JsonProperty(required = false)
+        BigDecimal entryPrice,
+
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("Stop-loss price — REQUIRED for BUY/SELL")
+        BigDecimal stopLoss,
+
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("First take-profit — REQUIRED for BUY/SELL")
+        BigDecimal tp1,
+
+        @JsonProperty(required = false)
+        BigDecimal tp2,
+
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("ISO-8601 UTC cooldown end, e.g. 2025-11-19T14:25:00Z")
+        String cooldownUntil,
+
+        // FIXED: @JsonProperty was missing!
+        @JsonProperty(required = false)
+        @JsonPropertyDescription("Exactly 3 memory bullets: 1) Thesis 2) Invalidation 3) Next check")
+        List<String> memory
+
 ) {
-    
-    /**
-     * Trading signal direction
-     */
-    public enum Signal {
-        BUY,    // Enter long position
-        SELL,   // Exit position or short
-        HOLD    // Wait for better opportunity
-    }
-    
-    /**
-     * Confidence level in the recommendation
-     */
-    public enum Confidence {
-        HIGH,    // 3+ indicators agree, strong signal
-        MEDIUM,  // 2 indicators agree, moderate signal
-        LOW      // Conflicting signals, uncertain
-    }
-    
-    /**
-     * Type of trade amount
-     */
-    public enum AmountType {
-        USD,   // Dollar amount (e.g., $100)
-        ETH,   // ETH amount (e.g., 0.05 ETH)
-        NONE   // No trade (HOLD signal)
+
+    public enum Signal { BUY, SELL, HOLD }
+    public enum Confidence { HIGH, MEDIUM, LOW }
+    public enum AmountType { USD, ETH, NONE }
+    public enum EntryType { MARKET, LIMIT }
+
+    // Convenience
+    public BigDecimal amount() {
+        return amountUsd != null ? amountUsd : amountEth;
     }
 
-    /** Entry type for execution */
-    public enum EntryType {
-        MARKET,
-        LIMIT
-    }
-    
-    /**
-     * Check if this recommendation is actionable (BUY or SELL with amount)
-     */
     public boolean isActionable() {
-        return (signal == Signal.BUY || signal == Signal.SELL) 
-            && amount != null 
-            && amount.compareTo(BigDecimal.ZERO) > 0
-            && amountType != AmountType.NONE;
+        return (signal == Signal.BUY || signal == Signal.SELL)
+                && amountUsd != null && amountUsd.compareTo(BigDecimal.ZERO) > 0
+                && stopLoss != null && tp1 != null
+                && expectedRR != null && expectedRR.compareTo(BigDecimal.valueOf(2.0)) >= 0;
     }
     
     /**
-     * Check if confidence is high enough to execute automatically
-     */
-    public boolean isHighConfidence() {
-        return confidence == Confidence.HIGH;
-    }
-    
-    /**
-     * Format for human-readable display (Slack, logs)
+     * Format for human-readable display (logs, console)
      */
     public String toDisplayString() {
-        String amountStr = amount != null 
-            ? (amountType == AmountType.USD 
-                ? String.format("$%.2f", amount) 
-                : String.format("%.5f ETH", amount))
-            : "NONE";
+        String amountStr = amountUsd != null 
+            ? String.format("$%.2f", amountUsd) 
+            : (amountEth != null ? String.format("%.5f ETH", amountEth) : "NONE");
 
-        String sl = stopLoss != null ? String.format("SL: %.2f", stopLoss) : "SL: -";
-        String tp1 = takeProfit1 != null ? String.format("TP1: %.2f", takeProfit1) : "TP1: -";
-        String tp2 = takeProfit2 != null ? String.format("TP2: %.2f", takeProfit2) : "TP2: -";
+        String sl = stopLoss != null ? String.format("SL: $%.2f", stopLoss) : "SL: -";
+        String tp1Str = tp1 != null ? String.format("TP1: $%.2f", tp1) : "TP1: -";
+        String tp2Str = tp2 != null ? String.format("TP2: $%.2f", tp2) : "TP2: -";
+        String rrStr = expectedRR != null ? String.format("R:R: %.2f", expectedRR) : "R:R: -";
         String et = entryType != null
             ? ("ENTRY: " + entryType + (entryPrice != null ? String.format(" @ $%.2f", entryPrice) : ""))
             : "ENTRY: -";
-        String th = timeHorizonMinutes != null ? ("HORIZON: " + timeHorizonMinutes + "m") : "HORIZON: -";
             
         return String.format("""
             SIGNAL: %s
             CONFIDENCE: %s
+            REGIME: %s
             AMOUNT: %s
-            %s | %s | %s
-            %s | %s
+            %s | %s | %s | %s
+            %s
             
             REASONING:
             %s
-            """, signal, confidence, amountStr, sl, tp1, tp2, et, th, reasoning);
+            """, signal, confidence, regime != null ? regime : "N/A", amountStr, 
+            sl, tp1Str, tp2Str, rrStr, et, reasoning);
     }
     
     /**
@@ -169,26 +131,28 @@ public record TradeRecommendation(
             case LOW -> "💭";
         };
         
-        String amountStr = amount != null 
-            ? (amountType == AmountType.USD 
-                ? String.format("$%.2f", amount) 
-                : String.format("%.5f ETH", amount))
-            : "_None_";
-        String sl = stopLoss != null ? String.format("SL: %.2f", stopLoss) : "SL: -";
-        String tp1 = takeProfit1 != null ? String.format("TP1: %.2f", takeProfit1) : "TP1: -";
-        String tp2 = takeProfit2 != null ? String.format("TP2: %.2f", takeProfit2) : "TP2: -";
+        String amountStr = amountUsd != null 
+            ? String.format("$%.2f", amountUsd) 
+            : (amountEth != null ? String.format("%.5f ETH", amountEth) : "_None_");
+        
+        String sl = stopLoss != null ? String.format("SL: $%.2f", stopLoss) : "SL: -";
+        String tp1Str = tp1 != null ? String.format("TP1: $%.2f", tp1) : "TP1: -";
+        String tp2Str = tp2 != null ? String.format("TP2: $%.2f", tp2) : "TP2: -";
+        String rrStr = expectedRR != null ? String.format("R:R: %.2f", expectedRR) : "R:R: -";
         String et = entryType != null ? ("ENTRY: " + entryType) : "ENTRY: -";
-        String th = timeHorizonMinutes != null ? ("HORIZON: " + timeHorizonMinutes + "m") : "HORIZON: -";
         
         return String.format("""
             *Signal:* %s *%s*
             *Confidence:* %s *%s*
+            *Regime:* %s
             *Amount:* %s
-            %s | %s | %s  
-            %s | %s
+            %s | %s | %s | %s
+            %s
             
             *Reasoning:*
             %s
-            """, signalEmoji, signal, confidenceEmoji, confidence, amountStr, sl, tp1, tp2, et, th, reasoning);
+            """, signalEmoji, signal, confidenceEmoji, confidence, 
+            regime != null ? regime : "N/A", amountStr, 
+            sl, tp1Str, tp2Str, rrStr, et, reasoning);
     }
 }
