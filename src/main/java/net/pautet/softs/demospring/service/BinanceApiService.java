@@ -2,6 +2,7 @@ package net.pautet.softs.demospring.service;
 
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.BinanceConfig;
+import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.*;
 import net.pautet.softs.demospring.exception.BinanceApiException;
 import org.springframework.core.ParameterizedTypeReference;
@@ -48,9 +49,11 @@ public class BinanceApiService {
     public static final String ETHUSDC = "ETHUSDC";
 
     private final BinanceConfig binanceConfig;
+    private final TradingModeConfig tradingModeConfig;
 
-    public BinanceApiService(BinanceConfig binanceConfig) {
+    public BinanceApiService(BinanceConfig binanceConfig, TradingModeConfig tradingModeConfig) {
         this.binanceConfig = binanceConfig;
+        this.tradingModeConfig = tradingModeConfig;
     }
 
     /**
@@ -82,7 +85,7 @@ public class BinanceApiService {
         try {
             var list = client.get()
                     .uri(uri)
-                    .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                    .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                     .retrieve()
                     .body(new org.springframework.core.ParameterizedTypeReference<java.util.List<net.pautet.softs.demospring.dto.BinanceTradeFee>>() {});
             BinanceTradeFee fee = null;
@@ -145,7 +148,7 @@ public class BinanceApiService {
                             .queryParam(PARAM_SIGNATURE, signature)
                             .build();
                 })
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
@@ -177,7 +180,7 @@ public class BinanceApiService {
         String uri = "/api/v3/order?" + query + "&" + PARAM_SIGNATURE + "=" + signature;
         return client.get()
                 .uri(uri)
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(BinanceOrderResponse.class);
     }
@@ -209,7 +212,7 @@ public class BinanceApiService {
         String uri = "/api/v3/order?" + query + "&" + PARAM_SIGNATURE + "=" + signature;
         return client.delete()
                 .uri(uri)
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(BinanceOrderResponse.class);
     }
@@ -320,7 +323,7 @@ public class BinanceApiService {
                         .queryParam(PARAM_TIMESTAMP, timestamp)
                         .queryParam(PARAM_SIGNATURE, signature)
                         .build())
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(BinanceAccountInfo.class);
     }
@@ -408,7 +411,7 @@ public class BinanceApiService {
                             .queryParam(PARAM_SIGNATURE, signature)
                             .build();
                 })
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(BinanceOrderResponse.class);
     }
@@ -458,7 +461,7 @@ public class BinanceApiService {
                         .queryParam(PARAM_TIMESTAMP, timestamp)
                         .queryParam(PARAM_SIGNATURE, signature)
                         .build())
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(net.pautet.softs.demospring.dto.BinanceOcoOrderResponse.class);
     }
@@ -488,7 +491,7 @@ public class BinanceApiService {
                         .queryParam(PARAM_TIMESTAMP, timestamp)
                         .queryParam(PARAM_SIGNATURE, signature)
                         .build())
-                .header(HEADER_API_KEY, binanceConfig.getApiKey())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
                 .retrieve()
                 .body(new ParameterizedTypeReference<List<BinanceTrade>>() {});
     }
@@ -500,7 +503,7 @@ public class BinanceApiService {
         try {
             Mac sha256Hmac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(
-                    binanceConfig.getApiSecret().getBytes(StandardCharsets.UTF_8),
+                    tradingModeConfig.getApiSecret().getBytes(StandardCharsets.UTF_8),
                     "HmacSHA256"
             );
             sha256Hmac.init(secretKey);
@@ -517,8 +520,10 @@ public class BinanceApiService {
      * Check if API credentials are missing or not configured
      */
     private boolean isMissingApiCredentials() {
-        return binanceConfig.getApiKey() == null || binanceConfig.getApiKey().isEmpty()
-                || binanceConfig.getApiSecret() == null || binanceConfig.getApiSecret().isEmpty();
+        // Use TradingModeConfig for credentials
+        String apiKey = tradingModeConfig.getApiKey();
+        String apiSecret = tradingModeConfig.getApiSecret();
+        return apiKey == null || apiKey.isEmpty() || apiSecret == null || apiSecret.isEmpty();
     }
 
     private RestClient createBinanceApiClient() {
@@ -526,8 +531,9 @@ public class BinanceApiService {
         requestFactory.setConnectTimeout((int) CONNECT_TIMEOUT_DURATION.toMillis());
         requestFactory.setReadTimeout((int) READ_TIMEOUT_DURATION.toMillis());
         
-        String baseUrl = binanceConfig.isTestnet() ? BINANCE_TESTNET_URI : BINANCE_API_URI;
-        log.debug("Using Binance API: {} (testnet: {})", baseUrl, binanceConfig.isTestnet());
+        // Use TradingModeConfig for base URL
+        String baseUrl = tradingModeConfig.getBaseUrl();
+        log.debug("Using Binance API: {} (mode: {})", baseUrl, tradingModeConfig.getTradingMode());
         
         return RestClient.builder()
                 .baseUrl(baseUrl)

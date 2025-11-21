@@ -86,6 +86,7 @@ function EthTrading() {
     const [orderTypeById, setOrderTypeById] = useState({}); // { [orderId]: 'TP' | 'SL' | 'OTHER' }
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [tradingMode, setTradingMode] = useState({ mode: 'TESTNET', testnet: true }); // Trading mode state
     
     // Trading state
     const [buyAmount, setBuyAmount] = useState('');
@@ -382,6 +383,24 @@ function EthTrading() {
         }
     };
 
+    // Fetch trading mode
+    const fetchTradingMode = async () => {
+        try {
+            const response = await fetch("/api/trading/mode", {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + sessionStorage.getItem("token")
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setTradingMode(data);
+            }
+        } catch (err) {
+            console.error("Error fetching trading mode:", err);
+        }
+    };
+
     // Fetch kline/candlestick data for chart
     const fetchETHKlines = async () => {
         try {
@@ -627,6 +646,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
 
     useEffect(() => {
         // Initial fetch
+        fetchTradingMode();
         fetchETHPrice();
         fetchETHTicker();
         fetchETHKlines();
@@ -1326,10 +1346,10 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                                 borderRadius: '12px',
                                 fontSize: '0.8rem',
                                 fontWeight: 'bold',
-                                background: '#fef3cd',
-                                color: '#856404'
+                                background: tradingMode.testnet ? '#fef3cd' : '#fee2e2',
+                                color: tradingMode.testnet ? '#856404' : '#991b1b'
                             }}>
-                                🧪 Testnet
+                                {tradingMode.testnet ? '🧪' : '⚠️'} {tradingMode.mode}
                             </span>
                         </div>
                         <div style={{ marginBottom: '1rem' }}>
@@ -1569,10 +1589,10 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                             borderRadius: '12px',
                             fontSize: '0.8rem',
                             fontWeight: 'bold',
-                            background: '#fef3cd',
-                            color: '#856404'
+                            background: tradingMode.testnet ? '#fef3cd' : '#fee2e2',
+                            color: tradingMode.testnet ? '#856404' : '#991b1b'
                         }}>
-                            🧪 Testnet
+                            {tradingMode.testnet ? '🧪' : '⚠️'} {tradingMode.mode}
                         </span>
                     </div>
                     {openOrders.length === 0 ? (
@@ -1737,10 +1757,10 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                             borderRadius: '12px',
                             fontSize: '0.8rem',
                             fontWeight: 'bold',
-                            background: '#fef3cd',
-                            color: '#856404'
+                            background: tradingMode.testnet ? '#fef3cd' : '#fee2e2',
+                            color: tradingMode.testnet ? '#856404' : '#991b1b'
                         }}>
-                            🧪 Testnet
+                            {tradingMode.testnet ? '🧪' : '⚠️'} {tradingMode.mode}
                         </span>
                     </div>
                     {trades.length === 0 ? (

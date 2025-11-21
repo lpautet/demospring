@@ -3,6 +3,7 @@ package net.pautet.softs.demospring.rest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.AccountSummary;
 import net.pautet.softs.demospring.dto.BinanceOrderResponse;
 import net.pautet.softs.demospring.dto.BinanceTrade;
@@ -20,7 +21,7 @@ import java.util.Map;
 
 /**
  * REST endpoints for ETH trading and market data
- * All trading operations use Binance Testnet
+ * Trading mode is configured via TRADING_MODE environment variable
  */
 @Slf4j
 @RestController
@@ -31,6 +32,7 @@ public class TradingController {
     private final BinanceApiService binanceApiService;
     private final BinanceTradingService tradingService;
     private final RecommendationHistoryRepository recommendationRepository;
+    private final TradingModeConfig tradingModeConfig;
 
     /**
      * Get current ETH/USDC price
@@ -208,10 +210,10 @@ public class TradingController {
         return interval.matches("^(1|3|5|15|30)m$|^(1|2|4|6|8|12)h$|^(1|3)d$|^1w$|^1M$");
     }
 
-    // ==================== Trading Endpoints (Binance Testnet) ====================
+    // ==================== Trading Endpoints ====================
 
     /**
-     * Get account summary from Binance Testnet
+     * Get account summary from Binance
      * Returns balance, value, and stats
      */
     @GetMapping("/portfolio")
@@ -224,7 +226,7 @@ public class TradingController {
     }
 
     /**
-     * Execute BUY trade on Binance Testnet
+     * Execute BUY trade on Binance
      */
     @PostMapping("/buy")
     public ResponseEntity<?> executeBuy(@RequestBody TradeRequest request, Authentication authentication) {
@@ -244,7 +246,7 @@ public class TradingController {
     }
 
     /**
-     * Execute SELL trade on Binance Testnet
+     * Execute SELL trade on Binance
      */
     @PostMapping("/sell")
     public ResponseEntity<?> executeSell(@RequestBody TradeRequest request, Authentication authentication) {
@@ -264,7 +266,7 @@ public class TradingController {
     }
 
     /**
-     * Get trade history from Binance Testnet
+     * Get trade history from Binance
      */
     @GetMapping("/trades")
     public ResponseEntity<List<BinanceTrade>> getTradeHistory(Authentication authentication) {
@@ -276,14 +278,19 @@ public class TradingController {
     }
 
     /**
-     * Check trading mode (always testnet)
+     * Check current trading mode
      */
     @GetMapping("/mode")
     public ResponseEntity<Map<String, Object>> getTradingMode() {
+        boolean isTestnet = tradingModeConfig.isTestnet();
         Map<String, Object> mode = Map.of(
-            "mode", "TESTNET",
-            "description", "Binance Testnet - Real execution, fake money",
-            "testnet", true,
+            "mode", tradingModeConfig.getTradingMode().toUpperCase(),
+            "description", isTestnet 
+                ? "Binance Testnet - Real execution, fake money" 
+                : "Binance Production - REAL MONEY trading",
+            "testnet", isTestnet,
+            "production", tradingModeConfig.isProduction(),
+            "baseUrl", tradingModeConfig.getBaseUrl(),
             "configured", tradingService.isConfigured()
         );
         return ResponseEntity.ok(mode);

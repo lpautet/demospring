@@ -9,6 +9,7 @@ import com.slack.api.model.block.composition.MarkdownTextObject;
 import com.slack.api.model.block.composition.PlainTextObject;
 import com.slack.api.model.block.element.ButtonElement;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.AccountSummary;
 import net.pautet.softs.demospring.dto.BinanceTrade;
 import net.pautet.softs.demospring.dto.TradeRecommendation;
@@ -42,6 +43,7 @@ public class SlackBotService {
     private final BinanceApiService binanceApiService;
     private final TradingContextService tradingContextService;
     private final RecommendationHistoryRepository recommendationRepository;
+    private final TradingModeConfig tradingModeConfig;
 
     @Value("${slack.bot-token}")
     private String botToken;
@@ -51,7 +53,8 @@ public class SlackBotService {
                           BinanceTradingService tradingService,
                           BinanceApiService binanceApiService,
                           TradingContextService tradingContextService,
-                          RecommendationHistoryRepository recommendationRepository) {
+                          RecommendationHistoryRepository recommendationRepository,
+                          TradingModeConfig tradingModeConfig) {
         this.slack = Slack.getInstance();
         this.methods = slack.methods();
         this.tradingChatService = tradingChatService;
@@ -60,6 +63,7 @@ public class SlackBotService {
         this.binanceApiService = binanceApiService;
         this.tradingContextService = tradingContextService;
         this.recommendationRepository = recommendationRepository;
+        this.tradingModeConfig = tradingModeConfig;
     }
 
     /**
@@ -236,7 +240,7 @@ public class SlackBotService {
             blocks.add(ContextBlock.builder()
                     .elements(List.of(
                             MarkdownTextObject.builder()
-                                    .text("🧪 | TESTNET - Binance Testnet (Real execution, fake money)")
+                                    .text(getModeEmoji() + " | " + getModeDescription())
                                     .build()
                     ))
                     .build());
@@ -366,8 +370,8 @@ public class SlackBotService {
             blocks.add(ContextBlock.builder()
                     .elements(List.of(
                             MarkdownTextObject.builder()
-                                    .text(String.format("🧪 | TESTNET - Binance Testnet | %d trades",
-                                            trades.size()))
+                                    .text(String.format("%s | %s | %d trades",
+                                            getModeEmoji(), tradingModeConfig.getTradingMode().toUpperCase(), trades.size()))
                                     .build()
                     ))
                     .build());
@@ -805,7 +809,7 @@ public class SlackBotService {
                                     context.portfolio.ethValue().doubleValue(),
                                     context.portfolio.totalValue().doubleValue(),
                                     context.portfolio.totalTrades(),
-                                    "TESTNET"))
+                                    tradingModeConfig.getTradingMode().toUpperCase()))
                             .build())
                     .build());
             
@@ -905,7 +909,7 @@ public class SlackBotService {
      */
     public void handleResetCommand(String userId, String channelId) {
         try {
-            log.warn("⚠️  Handling /eth reset for user: {} - TESTNET RESET", userId);
+            log.warn("⚠️  Handling /eth reset for user: {} - {} RESET", userId, tradingModeConfig.getTradingMode().toUpperCase());
 
             // Send warning message
             sendMessage(channelId, "⚠️  Resetting testnet account... This will sell all ETH!");
@@ -923,7 +927,7 @@ public class SlackBotService {
 
             // Header
             blocks.add(HeaderBlock.builder()
-                    .text(PlainTextObject.builder().text("🔄 Testnet Reset Complete").build())
+                    .text(PlainTextObject.builder().text("🔄 " + tradingModeConfig.getTradingMode() + " Reset Complete").build())
                     .build());
 
             // Actions taken
@@ -951,7 +955,7 @@ public class SlackBotService {
             blocks.add(ContextBlock.builder()
                     .elements(List.of(
                             MarkdownTextObject.builder()
-                                    .text("⚠️  *TESTNET ONLY* - This command only works on Binance Testnet")
+                                    .text("⚠️  *" + tradingModeConfig.getTradingMode().toUpperCase() + " MODE* - Current trading mode: " + getModeDescription())
                                     .build()
                     ))
                     .build());
@@ -1020,13 +1024,14 @@ public class SlackBotService {
                     """, 
                     recommendations.size(),
                     executed,
-                    recommendations.size() > 0 ? (executed * 100.0 / recommendations.size()) : 0,
-                    buyCount, sellCount, holdCount);
+                    recommendations.isEmpty() ? 0.0 : (executed * 100.0 / recommendations.size()),
+                    buyCount,
+                    sellCount,
+                    holdCount);
             
             blocks.add(SectionBlock.builder()
                     .text(MarkdownTextObject.builder().text(statsText).build())
                     .build());
-            
             blocks.add(DividerBlock.builder().build());
             
             // Table header
@@ -1167,7 +1172,7 @@ public class SlackBotService {
                                 `/eth buy <amount>` - Buy ETH (e.g., /eth buy $500)
                                 `/eth sell <amount>` - Sell ETH (e.g., /eth sell 0.5)
                                 
-                                *🔧 TESTNET*
+                                *🔧 " + tradingModeConfig.getTradingMode().toUpperCase() + "*
                                 `/eth reset` - Reset account to 0 ETH (sells all)
                                 
                                 *🔍 DEBUG*
@@ -1183,5 +1188,21 @@ public class SlackBotService {
                 .build());
 
         sendBlockMessage(channelId, blocks);
+    }
+
+    /**
+     * Get emoji for current trading mode
+     */
+    private String getModeEmoji() {
+        return tradingModeConfig.isTestnet() ? "🧪" : "⚠️";
+    }
+
+    /**
+     * Get description for current trading mode
+     */
+    private String getModeDescription() {
+        return tradingModeConfig.isTestnet()
+                ? tradingModeConfig.getTradingMode().toUpperCase() + " - Binance Testnet (Real execution, fake money)"
+                : tradingModeConfig.getTradingMode().toUpperCase() + " - REAL MONEY TRADING";
     }
 }

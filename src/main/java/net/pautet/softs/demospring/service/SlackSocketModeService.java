@@ -7,6 +7,7 @@ import com.slack.api.model.event.MessageChannelJoinEvent;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.BinanceOrderResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,13 +42,16 @@ public class SlackSocketModeService {
 
     private final SlackBotService slackBotService;
     private final BinanceTradingService tradingService;
+    private final TradingModeConfig tradingModeConfig;
 
     private SocketModeApp socketModeApp;
     private App app;
 
     public SlackSocketModeService(SlackBotService slackBotService,
-                                  BinanceTradingService tradingService) {
+                                  BinanceTradingService tradingService,
+                                  TradingModeConfig tradingModeConfig) {
         this.slackBotService = slackBotService;
+        this.tradingModeConfig = tradingModeConfig;
         this.tradingService = tradingService;
     }
 
@@ -332,8 +336,11 @@ public class SlackSocketModeService {
             // Execute via unified TradingService (testnet)
             BinanceOrderResponse order = tradingService.buyETH(usdtAmount);
 
+            String modeEmoji = tradingModeConfig.isTestnet() ? "🧪" : "⚠️";
+            String modeText = tradingModeConfig.getTradingMode().toUpperCase();
+            
             slackBotService.sendMessage(channelId, String.format("""
-                    ✅ BUY Order Executed 🧪 TESTNET
+                    ✅ BUY Order Executed %s %s
                     
                     Bought: %.6f ETH
                     Spent: $%.2f
@@ -342,6 +349,8 @@ public class SlackSocketModeService {
                     
                     Use `/eth portfolio` to view balance
                     """,
+                    modeEmoji,
+                    modeText,
                     order.executedQty(),
                     usdtAmount,
                     order.getAveragePrice(),
@@ -383,8 +392,11 @@ public class SlackSocketModeService {
             // Execute via unified TradingService (testnet)
             BinanceOrderResponse order = tradingService.sellETH(ethAmount);
 
+            String modeEmoji = tradingModeConfig.isTestnet() ? "🧪" : "⚠️";
+            String modeText = tradingModeConfig.getTradingMode().toUpperCase();
+            
             slackBotService.sendMessage(channelId, String.format("""
-                    ✅ SELL Order Executed 🧪 TESTNET
+                    ✅ SELL Order Executed %s %s
                     
                     Sold: %.6f ETH
                     Received: $%.2f
@@ -393,6 +405,8 @@ public class SlackSocketModeService {
                     
                     Use `/eth portfolio` to view balance
                     """,
+                    modeEmoji,
+                    modeText,
                     order.executedQty(),
                     order.cummulativeQuoteQty(),
                     order.getAveragePrice(),

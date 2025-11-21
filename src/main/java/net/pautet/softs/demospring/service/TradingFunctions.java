@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.AccountSummary;
 import net.pautet.softs.demospring.dto.BinanceOrderResponse;
 import net.pautet.softs.demospring.dto.BinanceTrade;
@@ -30,17 +31,20 @@ public class TradingFunctions {
     private final BinanceTradingService tradingService;
     private final TechnicalIndicatorService technicalIndicatorService;
     private final SentimentAnalysisService sentimentAnalysisService;
+    private final TradingModeConfig tradingModeConfig;
     private final ObjectMapper objectMapper;
 
     public TradingFunctions(BinanceApiService binanceApiService, 
                            BinanceTradingService tradingService,
                            TechnicalIndicatorService technicalIndicatorService,
                            SentimentAnalysisService sentimentAnalysisService,
+                           TradingModeConfig tradingModeConfig,
                            ObjectMapper objectMapper) {
         this.binanceApiService = binanceApiService;
         this.tradingService = tradingService;
         this.technicalIndicatorService = technicalIndicatorService;
         this.sentimentAnalysisService = sentimentAnalysisService;
+        this.tradingModeConfig = tradingModeConfig;
         this.objectMapper = objectMapper;
     }
 
@@ -170,7 +174,7 @@ public class TradingFunctions {
                 portfolioData.put("currentEthPrice", currentPrice.toString());
                 portfolioData.put("totalValue", summary.totalValue().toString());
                 portfolioData.put("totalTrades", String.valueOf(summary.totalTrades()));
-                portfolioData.put("mode", "TESTNET");
+                portfolioData.put("mode", tradingModeConfig.getTradingMode().toUpperCase());
                 
                 String result = objectMapper.writeValueAsString(portfolioData);
                 log.debug("getPortfolio result: {}", result);
@@ -219,7 +223,7 @@ public class TradingFunctions {
                 result.put("newUsdBalance", summary.usdBalance().toString());
                 result.put("newEthBalance", summary.ethBalance().toString());
                 result.put("newTotalValue", summary.totalValue().toString());
-                result.put("mode", "TESTNET");
+                result.put("mode", tradingModeConfig.getTradingMode().toUpperCase());
                 
                 String response = objectMapper.writeValueAsString(result);
                 log.info("executeTrade success: {}", response);

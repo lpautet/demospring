@@ -75,8 +75,6 @@ public class GrokConfig {
                 .model(model)
                 .temperature(0.1)
                 .maxTokens(2048)
-                .tools(List.of())                // empty tool list
-                .toolChoice("none")
                 .build();
 
         return new OpenAiChatModel(api, options, toolCallingManager, retryTemplate, observationRegistry);
