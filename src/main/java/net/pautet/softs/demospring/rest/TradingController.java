@@ -227,17 +227,26 @@ public class TradingController {
 
     /**
      * Execute BUY trade on Binance
+     * SECURITY: Disabled in production mode to prevent unauthorized trading
      */
     @PostMapping("/buy")
     public ResponseEntity<?> executeBuy(@RequestBody TradeRequest request, Authentication authentication) {
         String username = authentication.getName();
         log.info("POST /api/trading/buy - user: {} amount: ${}", username, request.getAmount());
         
+        // SECURITY: Block manual trading in production mode
+        if (tradingModeConfig.isProduction()) {
+            log.warn("SECURITY: Manual BUY rejected in production mode - user: {}", username);
+            return ResponseEntity.status(403).body(new ErrorResponse(
+                "Manual trading is disabled in PRODUCTION mode for security. Only AI-driven trades are allowed."
+            ));
+        }
+        
         try {
             BinanceOrderResponse result = tradingService.buyETH(request.getAmount());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
-            log.warn("BUY failed for {}: {}", username, e.getMessage());
+            log.warn("BUY validation failed for {}: {}", username, e.getMessage());
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         } catch (Exception e) {
             log.error("BUY error for {}", username, e);
@@ -247,17 +256,26 @@ public class TradingController {
 
     /**
      * Execute SELL trade on Binance
+     * SECURITY: Disabled in production mode to prevent unauthorized trading
      */
     @PostMapping("/sell")
     public ResponseEntity<?> executeSell(@RequestBody TradeRequest request, Authentication authentication) {
         String username = authentication.getName();
         log.info("POST /api/trading/sell - user: {} amount: {} ETH", username, request.getAmount());
         
+        // SECURITY: Block manual trading in production mode
+        if (tradingModeConfig.isProduction()) {
+            log.warn("SECURITY: Manual SELL rejected in production mode - user: {}", username);
+            return ResponseEntity.status(403).body(new ErrorResponse(
+                "Manual trading is disabled in PRODUCTION mode for security. Only AI-driven trades are allowed."
+            ));
+        }
+        
         try {
             BinanceOrderResponse result = tradingService.sellETH(request.getAmount());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
-            log.warn("SELL failed for {}: {}", username, e.getMessage());
+            log.warn("SELL validation failed for {}: {}", username, e.getMessage());
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         } catch (Exception e) {
             log.error("SELL error for {}", username, e);
