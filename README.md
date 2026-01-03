@@ -13,6 +13,7 @@ A Spring Boot application that integrates weather data from Netatmo devices with
 - [API Endpoints](#api-endpoints)
 - [Development](#development)
 - [Deployment](#deployment)
+- [Documentation](#documentation)
 
 ## 🔍 Overview
 
@@ -265,9 +266,22 @@ docker run --env-file .env -p 8080:8080 demospring
 
 ---
 
-## 📝 Notes
 
 - Ensure `.env` file is never committed to version control
 - Review Dependabot PRs before merging
 - Monitor security scan results in GitHub Actions
 - Keep Salesforce certificates secure and rotate regularly
+
+---
+
+## Documentation
+
+This repository now includes an ETH Trading module (Java 21 + React) in addition to the original Netatmo/Salesforce features.
+
+- Start here: `docs/INDEX.md` (documentation landing page)
+- Trading API: `docs/API_REFERENCE.md`
+- Trading chart behavior: `docs/TRADING_CHART_GUIDE.md` (consolidates prior chart docs)
+
+Notes:
+- The trading module integrates Binance Testnet by default and uses JWT-protected endpoints under `/api/trading/*`.
+- The project targets Java 21 (LTS).

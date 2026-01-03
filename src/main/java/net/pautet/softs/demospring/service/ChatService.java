@@ -44,7 +44,6 @@ public class ChatService {
     public ChatService(ChatModel chatModel) {
         this.chatClient = ChatClient.builder(chatModel)
                 .defaultSystem(SYSTEM_MESSAGE)
-                .defaultFunctions("getHomesData", "getHomeStatus", "getMeasure")
                 .build();
     }
 
