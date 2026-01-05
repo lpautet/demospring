@@ -284,4 +284,4 @@ This repository now includes an ETH Trading module (Java 21 + React) in addition
 
 Notes:
 - The trading module integrates Binance Testnet by default and uses JWT-protected endpoints under `/api/trading/*`.
-- The project targets Java 21 (LTS).
+- The project targets Java 21 (LTS). 
