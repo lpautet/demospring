@@ -6,18 +6,20 @@ import {
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
     Title,
     Tooltip,
     Legend,
     Filler
 } from 'chart.js';
 
-// Register Chart.js components (including scatter via PointElement + LineElement)
+// Register Chart.js components (including bar for volume)
 ChartJS.register(
     CategoryScale,
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
     Title,
     Tooltip,
     Legend,
@@ -439,10 +441,12 @@ function EthTrading() {
                 klinesAll = klinesAll.slice(klinesAll.length - 1440);
             }
 
-            // Map to chart points
+            // Map to chart points with volume
+            // kline format: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignore]
             const prices = klinesAll.map(kline => ({
                 time: new Date(kline[0]),
-                price: parseFloat(kline[4])
+                price: parseFloat(kline[4]),  // close price
+                volume: parseFloat(kline[5])  // volume
             }));
             setPriceHistory(prices);
         } catch (err) {
@@ -949,18 +953,30 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
         }
     };
 
-    // Build line chart with OCO overlays
+    // Build line chart with OCO overlays and volume
     const chartData = {
         labels: chartLabels,
         datasets: [
             {
+                label: 'Volume',
+                type: 'bar',
+                data: priceHistory.map(p => p.volume),
+                backgroundColor: 'rgba(156, 163, 175, 0.3)',
+                borderColor: 'rgba(156, 163, 175, 0.5)',
+                borderWidth: 0,
+                yAxisID: 'volume',
+                order: 10
+            },
+            {
                 label: 'ETH/USDC Price',
+                type: 'line',
                 data: priceHistory.map(p => p.price),
                 borderColor: '#667eea',
                 backgroundColor: 'rgba(102, 126, 234, 0.1)',
                 borderWidth: 2,
                 tension: 0.4,
                 fill: true,
+                yAxisID: 'price',
                 order: 4
             },
             ...(averageCost ? [{
@@ -972,6 +988,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 borderDash: [5, 5],
                 pointRadius: 0,
                 fill: false,
+                yAxisID: 'price',
                 order: 1
             }] : []),
             ...(tpPrice ? [{
@@ -983,6 +1000,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 borderWidth: 2,
                 pointRadius: 0,
                 fill: false,
+                yAxisID: 'price',
                 order: 2
             }] : []),
             ...(slPrice ? [{
@@ -994,6 +1012,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 borderWidth: 2,
                 pointRadius: 0,
                 fill: false,
+                yAxisID: 'price',
                 order: 2
             }] : []),
             // Open Orders overlay (TP lines)
@@ -1006,6 +1025,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 borderWidth: 1.5,
                 pointRadius: 0,
                 fill: false,
+                yAxisID: 'price',
                 order: 2
             })),
             // Open Orders overlay (SL lines)
@@ -1018,6 +1038,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 borderWidth: 1.5,
                 pointRadius: 0,
                 fill: false,
+                yAxisID: 'price',
                 order: 2
             })),
             // Open Entry overlays (BUY LIMIT horizon spans)
@@ -1033,6 +1054,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 pointHoverRadius: 8,
                 pointStyle: 'circle',
                 spanGaps: false,
+                yAxisID: 'price',
                 order: 0
             }] : []),
             ...(hasSellMarkers ? [{
@@ -1046,6 +1068,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 pointHoverRadius: 8,
                 pointStyle: 'circle',
                 spanGaps: false,
+                yAxisID: 'price',
                 order: 0
             }] : []),
             ...(ocoSellTpMarkersData.some(v => v !== null) ? [{
@@ -1059,6 +1082,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 pointHoverRadius: 11,
                 pointStyle: 'triangle',
                 spanGaps: false,
+                yAxisID: 'price',
                 order: 0
             }] : []),
             ...(ocoSellSlMarkersData.some(v => v !== null) ? [{
@@ -1073,6 +1097,7 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
                 pointStyle: 'triangle',
                 pointRotation: 180,
                 spanGaps: false,
+                yAxisID: 'price',
                 order: 0
             }] : [])
         ]
@@ -1106,11 +1131,39 @@ Be specific and actionable. Include confidence level (HIGH/MEDIUM/LOW).`;
             }
         },
         scales: {
-            y: {
+            x: {
+                grid: {
+                    display: false
+                }
+            },
+            price: {
+                type: 'linear',
+                position: 'left',
                 ticks: {
                     callback: function(value) {
                         return '$' + value.toLocaleString();
                     }
+                },
+                grid: {
+                    color: 'rgba(0, 0, 0, 0.05)'
+                }
+            },
+            volume: {
+                type: 'linear',
+                position: 'right',
+                max: function(context) {
+                    const volumes = context.chart.data.datasets[0].data;
+                    const maxVol = Math.max(...volumes);
+                    return maxVol * 4; // Make volume bars take up ~25% of chart height
+                },
+                ticks: {
+                    callback: function(value) {
+                        return (value / 1000).toFixed(0) + 'K';
+                    },
+                    color: 'rgba(156, 163, 175, 0.7)'
+                },
+                grid: {
+                    display: false
                 }
             }
         }
