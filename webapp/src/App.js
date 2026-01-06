@@ -171,12 +171,38 @@ function BatteryIcon({percent = 0, titleText = "Battery"}) {
     );
 }
 
+function WindCompass({angleDeg, titleText = 'Wind direction'}) {
+    if (angleDeg == null || Number.isNaN(Number(angleDeg))) {
+        return null;
+    }
+    const a = ((Number(angleDeg) % 360) + 360) % 360;
+    const size = 44;
+    const cx = size / 2;
+    const cy = size / 2;
+    return (
+        <div style={{display: 'flex', justifyContent: 'flex-start', marginBottom: '0.4em'}}>
+            <span title={`${titleText}: ${a.toFixed(0)}°`} style={{display: 'inline-flex', alignItems: 'center'}}>
+                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Wind direction compass">
+                    <title>{`${titleText}: ${a.toFixed(0)}°`}</title>
+                    <circle cx={cx} cy={cy} r={18} fill="none" stroke="#bbb" strokeWidth="2"/>
+                    <text x={cx} y={cy - 20} textAnchor="middle" fontSize="10" fill="#666">N</text>
+                    <g transform={`rotate(${a} ${cx} ${cy})`}>
+                        <line x1={cx} y1={cy + 10} x2={cx} y2={cy - 14} stroke="#1f2937" strokeWidth="2" strokeLinecap="round"/>
+                        <polygon points={`${cx},${cy - 16} ${cx - 5},${cy - 6} ${cx + 5},${cy - 6}`} fill="#1f2937"/>
+                    </g>
+                </svg>
+            </span>
+        </div>
+    );
+}
+
 const MeasurementCard = ({title, data, measures, time}) => {
     if (!measures) {
         return;
     }
     const signal = getSignalInfo(data);
     const battery = getBatteryInfo(data);
+    const compassAngle = data?.wind_angle ?? data?.gust_angle;
     const options = {
         responsive: true,
         maintainAspectRatio: false,
@@ -325,6 +351,21 @@ const MeasurementCard = ({title, data, measures, time}) => {
         };
     }
 
+    if (measures?.some(m => m.wind_strength !== undefined || m.gust_strength !== undefined)) {
+        options.scales.wind = {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            title: {
+                display: true,
+                text: 'Wind (km/h)'
+            },
+            grid: {
+                drawOnChartArea: false
+            }
+        };
+    }
+
     const chartData = {
         labels: measures?.map(m => new Date(m.timestamp * 1000)) || [],
         datasets: []
@@ -431,6 +472,30 @@ const MeasurementCard = ({title, data, measures, time}) => {
         });
     }
 
+    if (measures?.some(m => m.wind_strength !== undefined)) {
+        chartData.datasets.push({
+            label: 'Wind',
+            data: measures?.map(m => m.wind_strength) || [],
+            borderColor: 'rgb(33, 150, 243)',
+            backgroundColor: 'rgba(33, 150, 243, 0.2)',
+            yAxisID: 'wind',
+            pointRadius: 0,
+            borderWidth: 2
+        });
+    }
+
+    if (measures?.some(m => m.gust_strength !== undefined)) {
+        chartData.datasets.push({
+            label: 'Gust',
+            data: measures?.map(m => m.gust_strength) || [],
+            borderColor: 'rgb(0, 121, 107)',
+            backgroundColor: 'rgba(0, 121, 107, 0.2)',
+            yAxisID: 'wind',
+            pointRadius: 0,
+            borderWidth: 2
+        });
+    }
+
     return (
         <div className="card">
             <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
@@ -442,6 +507,9 @@ const MeasurementCard = ({title, data, measures, time}) => {
             </div>
             <div style={{display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0}}>
                 <div className="measurements" style={{flex: '0 0 auto', paddingRight: '1em'}}>
+                    {(data?.wind_strength !== undefined || data?.wind_angle !== undefined || data?.gust_strength !== undefined || data?.gust_angle !== undefined) &&
+                        <WindCompass angleDeg={compassAngle} titleText="Wind direction"/>
+                    }
                     {data.temperature !== undefined && <p className="temperature">{data.temperature}&deg;</p>}
                     {data.humidity !== undefined && <p>{data.humidity}%</p>}
                     {data.co2 !== undefined && <p>CO2 {data.co2}ppm</p>}
@@ -449,6 +517,10 @@ const MeasurementCard = ({title, data, measures, time}) => {
                     {data.rain !== undefined && <p>{data.rain}mm/h</p>}
                     {data.sum_rain !== undefined && <p>last 1h: {data.sum_rain}mm</p>}
                     {data.sum_rain_24 !== undefined && <p>Today: {data.sum_rain_24}mm</p>}
+                    {data.wind_strength !== undefined && <p>Wind: {data.wind_strength} km/h</p>}
+                    {data.wind_angle !== undefined && <p>Dir: {data.wind_angle}&deg;</p>}
+                    {data.gust_strength !== undefined && <p>Gust: {data.gust_strength} km/h</p>}
+                    {data.gust_angle !== undefined && <p>Gust dir: {data.gust_angle}&deg;</p>}
                     {data.therm_measured_temperature !== undefined &&
                         <p className="temperature">{data.therm_measured_temperature}&deg;</p>}
                     {data.therm_setpoint_temperature !== undefined &&
@@ -646,6 +718,7 @@ function App() {
     const [homeOfficeModule, setHomeOfficeModule] = useState({});
     const [bedroomModule, setBedroomModule] = useState({});
     const [rainModule, setRainModule] = useState({});
+    const [windModule, setWindModule] = useState({});
     const [mainStation, setMainStation] = useState({});
     const [therm, setTherm] = useState({});
     const [time, setTime] = useState(new Date());
@@ -804,6 +877,23 @@ function App() {
                         case 'sp_temperature':
                             measurements.sp_temperature = measurementValue;
                             break;
+                        // Netatmo anemometer keys (returned by /getmeasure)
+                        case 'WindStrength':
+                        case 'wind_strength':
+                            measurements.wind_strength = measurementValue;
+                            break;
+                        case 'WindAngle':
+                        case 'wind_angle':
+                            measurements.wind_angle = measurementValue;
+                            break;
+                        case 'GustStrength':
+                        case 'gust_strength':
+                            measurements.gust_strength = measurementValue;
+                            break;
+                        case 'GustAngle':
+                        case 'gust_angle':
+                            measurements.gust_angle = measurementValue;
+                            break;
                     }
                 });
 
@@ -813,6 +903,15 @@ function App() {
                 };
             });
         });
+
+        // Populate current values from latest datapoint so the card can display them.
+        const latest = module.measures?.length ? module.measures[module.measures.length - 1] : null;
+        if (latest) {
+            if (latest.wind_strength !== undefined) module.wind_strength = latest.wind_strength;
+            if (latest.wind_angle !== undefined) module.wind_angle = latest.wind_angle;
+            if (latest.gust_strength !== undefined) module.gust_strength = latest.gust_strength;
+            if (latest.gust_angle !== undefined) module.gust_angle = latest.gust_angle;
+        }
 
         //console.log(`Processed ${module.measures.length} measures for module ${module.id}`);
     }
@@ -885,6 +984,13 @@ function App() {
                     } else {
                         addMessage(`No measures received for rain module ${module.id}`, 'warning');
                     }
+                } else if (module.type === 'NAModule2') {
+                    await getMeasures(module, ['WindStrength', 'WindAngle', 'GustStrength', 'GustAngle']);
+                    if (module.measures && module.measures.length > 0) {
+                        moduleUpdates.set('windModule', module);
+                    } else {
+                        addMessage(`No measures received for wind module ${module.id}`, 'warning');
+                    }
                 }
                 if (module.id === '02:00:00:a9:a2:14') {
                     await getMeasures(module, ['temperature', 'humidity']);
@@ -929,6 +1035,7 @@ function App() {
         if (moduleUpdates.has('homeOfficeModule')) setHomeOfficeModule(moduleUpdates.get('homeOfficeModule'));
         if (moduleUpdates.has('bedroomModule')) setBedroomModule(moduleUpdates.get('bedroomModule'));
         if (moduleUpdates.has('rainModule')) setRainModule(moduleUpdates.get('rainModule'));
+        if (moduleUpdates.has('windModule')) setWindModule(moduleUpdates.get('windModule'));
         if (moduleUpdates.has('mainStation')) setMainStation(moduleUpdates.get('mainStation'));
         if (moduleUpdates.has('therm')) setTherm(moduleUpdates.get('therm'));
 
@@ -1197,6 +1304,20 @@ function App() {
                     }}
                     measures={rainModule.measures}
                     time={getRelativeTime(new Date(rainModule.ts * 1000))}
+                />
+                <MeasurementCard
+                    title="Wind"
+                    data={{
+                        ...windModule,
+                        meta: {
+                            rf_status: windModule.rf_status,
+                            wifi_status: windModule.wifi_status,
+                            battery_percent: windModule.battery_percent,
+                            battery_vp: windModule.battery_vp
+                        }
+                    }}
+                    measures={windModule.measures}
+                    time={getRelativeTime(new Date(windModule.ts * 1000))}
                 />
                 <MeasurementCard
                     title="Living Room"
