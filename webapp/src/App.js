@@ -179,16 +179,20 @@ function WindCompass({angleDeg, titleText = 'Wind direction'}) {
     const size = 44;
     const cx = size / 2;
     const cy = size / 2;
+    const tooltip = `${titleText} (from): ${a.toFixed(0)}°`;
     return (
         <div style={{display: 'flex', justifyContent: 'flex-start', marginBottom: '0.4em'}}>
-            <span title={`${titleText}: ${a.toFixed(0)}°`} style={{display: 'inline-flex', alignItems: 'center'}}>
+            <span title={tooltip} style={{display: 'inline-flex', alignItems: 'center'}}>
                 <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="Wind direction compass">
-                    <title>{`${titleText}: ${a.toFixed(0)}°`}</title>
+                    <title>{tooltip}</title>
                     <circle cx={cx} cy={cy} r={18} fill="none" stroke="#bbb" strokeWidth="2"/>
                     <text x={cx} y={cy - 20} textAnchor="middle" fontSize="10" fill="#666">N</text>
+                    <text x={cx} y={cy + 24} textAnchor="middle" fontSize="9" fill="#666">FROM</text>
                     <g transform={`rotate(${a} ${cx} ${cy})`}>
-                        <line x1={cx} y1={cy + 10} x2={cx} y2={cy - 14} stroke="#1f2937" strokeWidth="2" strokeLinecap="round"/>
-                        <polygon points={`${cx},${cy - 16} ${cx - 5},${cy - 6} ${cx + 5},${cy - 6}`} fill="#1f2937"/>
+                        {/* Meteorological convention: direction is where wind is coming FROM.
+                            Draw arrow pointing toward the center from that bearing. */}
+                        <line x1={cx} y1={cy - 16} x2={cx} y2={cy + 6} stroke="#1f2937" strokeWidth="2" strokeLinecap="round"/>
+                        <polygon points={`${cx},${cy + 8} ${cx - 5},${cy - 2} ${cx + 5},${cy - 2}`} fill="#1f2937"/>
                     </g>
                 </svg>
             </span>
