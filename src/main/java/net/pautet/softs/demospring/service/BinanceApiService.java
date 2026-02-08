@@ -1,7 +1,6 @@
 package net.pautet.softs.demospring.service;
 
 import lombok.extern.slf4j.Slf4j;
-import net.pautet.softs.demospring.config.BinanceConfig;
 import net.pautet.softs.demospring.config.TradingModeConfig;
 import net.pautet.softs.demospring.dto.*;
 import net.pautet.softs.demospring.exception.BinanceApiException;
@@ -39,8 +38,6 @@ public class BinanceApiService {
 
     private static final Duration CONNECT_TIMEOUT_DURATION = Duration.ofSeconds(5);
     private static final Duration READ_TIMEOUT_DURATION = Duration.ofSeconds(10);
-    private static final String BINANCE_API_URI = "https://api.binance.com";
-    private static final String BINANCE_TESTNET_URI = "https://testnet.binance.vision";
     private static final String PARAM_SYMBOL = "symbol";
     private static final String PARAM_TIMESTAMP = "timestamp";
     private static final String PARAM_RECV_WINDOW = "recvWindow";
@@ -48,11 +45,9 @@ public class BinanceApiService {
     private static final String HEADER_API_KEY = "X-MBX-APIKEY";
     public static final String ETHUSDC = "ETHUSDC";
 
-    private final BinanceConfig binanceConfig;
     private final TradingModeConfig tradingModeConfig;
 
-    public BinanceApiService(BinanceConfig binanceConfig, TradingModeConfig tradingModeConfig) {
-        this.binanceConfig = binanceConfig;
+    public BinanceApiService( TradingModeConfig tradingModeConfig) {
         this.tradingModeConfig = tradingModeConfig;
     }
 
@@ -229,6 +224,32 @@ public class BinanceApiService {
                 .uri("/api/v3/ticker/price?symbol=" + symbol)
                 .retrieve()
                 .body(BinanceTickerPrice.class);
+    }
+
+    /**
+     * Cancel all open orders for a specific symbol
+     * Endpoint: DELETE /api/v3/openOrders
+     */
+    public List<BinanceOrderResponse> cancelAllOrders(String symbol) {
+        if (isMissingApiCredentials()) {
+            throw new IllegalStateException("Binance API credentials not configured");
+        }
+
+        long timestamp = System.currentTimeMillis();
+        String queryString = String.format("symbol=%s&timestamp=%d", symbol, timestamp);
+        String signature = generateSignature(queryString);
+
+        RestClient client = createBinanceApiClient();
+        return client.delete()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v3/openOrders")
+                        .queryParam(PARAM_SYMBOL, symbol)
+                        .queryParam(PARAM_TIMESTAMP, timestamp)
+                        .queryParam(PARAM_SIGNATURE, signature)
+                        .build())
+                .header(HEADER_API_KEY, tradingModeConfig.getApiKey())
+                .retrieve()
+                .body(new ParameterizedTypeReference<List<BinanceOrderResponse>>() {});
     }
 
     /**

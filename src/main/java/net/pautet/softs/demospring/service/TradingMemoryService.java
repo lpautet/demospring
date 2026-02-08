@@ -247,8 +247,9 @@ public class TradingMemoryService {
             Duration timeSinceLast = Duration.between(last.getTimestamp(), LocalDateTime.now());
             long minutesSince = timeSinceLast.toMinutes();
             
-            if (minutesSince < 15) {
-                return String.format("Last trade %d min ago (min 15 min between trades)", minutesSince);
+            // Fix: Use 12 minute threshold instead of 15 to account for scheduler delay (runs every 15m)
+            if (minutesSince < 12) {
+                return String.format("Last trade %d min ago (requires 12 min buffer)", minutesSince);
             }
             
             return String.format("No cooldown (last trade %d min ago)", minutesSince);

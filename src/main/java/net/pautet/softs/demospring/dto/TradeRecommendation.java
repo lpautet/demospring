@@ -17,7 +17,7 @@ public record TradeRecommendation(
         Confidence confidence,
 
         @JsonProperty(required = false)
-        @JsonPropertyDescription("Expected R:R >= 2.00 for trades, null for HOLD")
+        @JsonPropertyDescription("Expected R:R >= 1.50 for trades, null for HOLD")
         BigDecimal expectedRR,
 
         @JsonProperty(required = true)
@@ -61,7 +61,6 @@ public record TradeRecommendation(
         @JsonPropertyDescription("ISO-8601 UTC cooldown end, e.g. 2025-11-19T14:25:00Z")
         String cooldownUntil,
 
-        // FIXED: @JsonProperty was missing!
         @JsonProperty(required = false)
         @JsonPropertyDescription("Exactly 3 memory bullets: 1) Thesis 2) Invalidation 3) Next check")
         List<String> memory
@@ -82,7 +81,7 @@ public record TradeRecommendation(
         return (signal == Signal.BUY || signal == Signal.SELL)
                 && amountUsd != null && amountUsd.compareTo(BigDecimal.ZERO) > 0
                 && stopLoss != null && tp1 != null
-                && expectedRR != null && expectedRR.compareTo(BigDecimal.valueOf(2.0)) >= 0;
+                && expectedRR != null && expectedRR.compareTo(BigDecimal.valueOf(1.49)) >= 0;
     }
     
     /**

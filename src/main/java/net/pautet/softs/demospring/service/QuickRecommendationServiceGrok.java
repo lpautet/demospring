@@ -160,22 +160,5 @@ public class QuickRecommendationServiceGrok {
         }
     }
 
-
-    private String callWithFlexFallback(String prompt) {
-        try {
-            return chatClient.prompt()
-                    .user(prompt)
-                    .options(OpenAiChatOptions.builder().serviceTier("flex").build())
-                    .call()
-                    .content();
-        } catch (Exception ex) {
-            log.warn("Flex tier failed, falling back to standard", ex);
-            return chatClient.prompt()
-                    .user(prompt)
-                    .options(OpenAiChatOptions.builder().serviceTier("auto").build())
-                    .call()
-                    .content();
-        }
-    }
 }
 

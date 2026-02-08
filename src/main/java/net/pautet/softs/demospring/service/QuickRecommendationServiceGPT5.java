@@ -161,25 +161,11 @@ public class QuickRecommendationServiceGPT5 {
 
             String response;
             if (flexEnabled) {
-                log.debug("Using Flex tier for cost savings (may add 10-60s latency)");
-                try {
-                    response = chatClient.prompt()
-                            .user(renderedPrompt)
-                            .options(OpenAiChatOptions.builder()
-                                    .serviceTier("flex")
-                                    .build())
-                            .call()
-                            .content();
-                } catch (Exception flexException) {
-                    log.warn("Flex tier unavailable, retrying with standard tier", flexException);
-                    response = chatClient.prompt()
-                            .user(renderedPrompt)
-                            .options(OpenAiChatOptions.builder()
-                                    .serviceTier("auto")
-                                    .build())
-                            .call()
-                            .content();
-                }
+                log.debug("Using Flex tier (Simulated - setting high priority if supported)");
+                response = chatClient.prompt()
+                        .user(renderedPrompt)
+                        .call()
+                        .content();
             } else {
                 log.debug("Using standard tier (Flex disabled)");
                 response = chatClient.prompt()

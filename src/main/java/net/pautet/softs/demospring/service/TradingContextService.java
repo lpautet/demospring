@@ -93,7 +93,7 @@ public class TradingContextService {
 
         // You need to add these two lines in BinanceApiService or calculate from klines
         double sessionVwap = binanceApiService.getSessionVwap(); // today's VWAP from 00:00 UTC
-        double current5mVolumeRatio = technicalIndicatorService.getVolumeRatio5m(); // current 5m vol / avg20
+        double current5mVolumeRatio = technicalIndicatorService.getVolumeRatio5m(BinanceTradingService.SYMBOL_ETHUSDC); // current 5m vol / avg20
 
         // Candle timing
         long fiveMin = nowUtcEpochSeconds - (nowUtcEpochSeconds % 300);
@@ -131,12 +131,18 @@ public class TradingContextService {
                 cooldownInfo
         ));
 
-        // 2. TECHNICAL INDICATORS — now with ADX, DI, BB width, ATR for regime detection
+        // 2. TECHNICAL INDICATORS — now with ADX, DI, BB width, ATR, CCI, Williams %R
         formatted.put("technical5m", formatTechnicalsEnhanced(context.tech5m, "5m"));
         formatted.put("technical15m", formatTechnicalsEnhanced(context.tech15m, "15m"));
         formatted.put("technical1h", formatTechnicalsEnhanced(context.tech1h, "1h"));
+        
+        // 3. MULTI-TIMEFRAME ANALYSIS - Check for trend alignment
+        formatted.put("multiTimeframeAnalysis", checkTrendAlignment(context.tech5m, context.tech15m, context.tech1h));
 
-        // 3. SENTIMENT — kept but de-emphasized (tiebreaker only)
+        // 4. KEY LEVELS - Pivot Points (from 1h or 15m context - using 1h as standard)
+        formatted.put("keyLevels", formatKeyLevels(context.tech1h));
+
+        // 5. SENTIMENT — kept but de-emphasized (tiebreaker only)
         formatted.put("sentiment", String.format("""
             Fear & Greed Index: %d (%s) → use as contrarian filter only
             Overall Sentiment: %s
@@ -146,7 +152,7 @@ public class TradingContextService {
                 getStringValue(context.sentiment, "classification")
         ));
 
-        // 4. PORTFOLIO — exact USDC free balance
+        // 6. PORTFOLIO — exact USDC free balance
         double freeUsdc = context.portfolio.usdBalance().doubleValue(); // make sure this is FREE balance
         formatted.put("portfolio", String.format("""
             Free USDC: $%.2f (risk exactly 4%% per trade → max $%.2f risk)
@@ -158,47 +164,129 @@ public class TradingContextService {
                 context.portfolio.totalValue().doubleValue()
         ));
 
-        // 5. TRADING MEMORY — last 3 bullets only
+        // 7. TRADING MEMORY — last 3 bullets only
         formatted.put("tradingMemory", context.tradingMemory);
 
         return formatted;
     }
 
+    private String checkTrendAlignment(Map<String, Object> t5m, Map<String, Object> t15m, Map<String, Object> t1h) {
+        double ema20_5m = getDoubleValue(t5m, "ema20");
+        double ema50_5m = getDoubleValue(t5m, "ema50");
+        double ema20_15m = getDoubleValue(t15m, "ema20");
+        double ema50_15m = getDoubleValue(t15m, "ema50");
+        double ema20_1h = getDoubleValue(t1h, "ema20");
+        double ema50_1h = getDoubleValue(t1h, "ema50");
+        
+        boolean uptrend5m = ema20_5m > ema50_5m;
+        boolean uptrend15m = ema20_15m > ema50_15m;
+        boolean uptrend1h = ema20_1h > ema50_1h;
+        
+        String alignment;
+        if (uptrend5m && uptrend15m && uptrend1h) alignment = "FULL BULLISH ALIGNMENT (Strong Uptrend)";
+        else if (!uptrend5m && !uptrend15m && !uptrend1h) alignment = "FULL BEARISH ALIGNMENT (Strong Downtrend)";
+        else if (uptrend5m && uptrend15m) alignment = "BULLISH INTRA-DAY (5m & 15m aligned)";
+        else if (!uptrend5m && !uptrend15m) alignment = "BEARISH INTRA-DAY (5m & 15m aligned)";
+        else alignment = "MIXED / CHOPPY (No clear alignment)";
+        
+        return String.format("""
+            Trend Alignment (EMA20 vs EMA50):
+            5m: %s | 15m: %s | 1h: %s
+            Overall: %s
+            """, 
+            uptrend5m ? "UP" : "DOWN", 
+            uptrend15m ? "UP" : "DOWN", 
+            uptrend1h ? "UP" : "DOWN", 
+            alignment
+        );
+    }
+    
+    private String formatKeyLevels(Map<String, Object> indicators) {
+        @SuppressWarnings("unchecked")
+        Map<String, Double> pivots = (Map<String, Double>) indicators.get("pivotPoints");
+        
+        if (pivots == null) return "Key Levels: N/A";
+        
+        double currentPrice = getDoubleValue(indicators, "price");
+        
+        return String.format("""
+            Standard Pivot Points (1H based):
+            R3: %s | R2: %s | R1: %s
+            PIVOT: %s (Current Price: %.2f)
+            S1: %s | S2: %s | S3: %s
+            
+            Immediate Resistance: %s
+            Immediate Support: %s
+            """,
+            formatPivotLevel(pivots.get("r3")), formatPivotLevel(pivots.get("r2")), formatPivotLevel(pivots.get("r1")),
+            formatPivotLevel(pivots.get("pivot")), currentPrice,
+            formatPivotLevel(pivots.get("s1")), formatPivotLevel(pivots.get("s2")), formatPivotLevel(pivots.get("s3")),
+            getImmediateLevel(currentPrice, pivots, true),
+            getImmediateLevel(currentPrice, pivots, false)
+        );
+    }
 
+    private String formatPivotLevel(Double level) {
+        if (level == null || level < 0.01) return "N/A";
+        return String.format("%.2f", level);
+    }
+    
+    private String getImmediateLevel(double price, Map<String, Double> pivots, boolean resistance) {
+        double closest = 0.0;
+        double minDiff = Double.MAX_VALUE;
+        String levelName = "None";
+        
+        for (Map.Entry<String, Double> entry : pivots.entrySet()) {
+            double level = entry.getValue();
+            if (level < 0.01) continue; // Skip zero/invalid levels
 
-    /**
-     * Format technical indicators for display
-     */
-    private String formatTechnicals(Map<String, Object> indicators) {
-        double rsi = getDoubleValue(indicators, "rsi");
-        String rsiSignal = getStringValue(indicators, "rsiSignal");
-        double macd = getDoubleValue(indicators, "macd");
-        String macdSignal = getStringValue(indicators, "macdSignal");
-        double macdSignalLine = getDoubleValue(indicators, "macdSignalLine");
-        double macdHistogram = getDoubleValue(indicators, "macdHistogram");
-        double bbUpper = getDoubleValue(indicators, "bbUpper");
-        double bbMiddle = getDoubleValue(indicators, "bbMiddle");
-        double bbLower = getDoubleValue(indicators, "bbLower");
-        double ema20 = getDoubleValue(indicators, "ema20");
-        double ema50 = getDoubleValue(indicators, "ema50");
-        String trend = getStringValue(indicators, "trend");
-        int dataPoints = ((Number) indicators.getOrDefault("dataPoints", 0)).intValue();
-        String quality = getStringValue(indicators, "dataQuality");
+            if (resistance && level > price) {
+                double diff = level - price;
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = level;
+                    levelName = entry.getKey().toUpperCase();
+                }
+            } else if (!resistance && level < price) {
+                double diff = price - level;
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = level;
+                    levelName = entry.getKey().toUpperCase();
+                }
+            }
+        }
+        
+        if (minDiff == Double.MAX_VALUE) return "None";
+        return String.format("%s at %.2f (+%.2f%%)", levelName, closest, Math.abs(closest - price)/price * 100);
+    }
+
+    private String formatTechnicalsEnhanced(Map<String, Object> ind, String tf) {
+        double adx = getDoubleValue(ind, "adx");
+        double plusDi = getDoubleValue(ind, "plusDi");
+        double minusDi = getDoubleValue(ind, "minusDi");
+        double atr = getDoubleValue(ind, "atr");
+        double bbWidth = getDoubleValue(ind, "bbWidthPct"); // (upper-lower)/middle *100
+        double sessionVwap = binanceApiService.getSessionVwap();
+        double cci = getDoubleValue(ind, "cci");
+        double williamsR = getDoubleValue(ind, "williamsR");
 
         return String.format("""
-                RSI: %.2f (%s)
-                MACD: %.2f | Signal: %.2f | Histogram: %.2f (%s)
-                Bollinger Bands: Upper=%.2f, Mid=%.2f, Lower=%.2f
-                EMA20: %.2f | EMA50: %.2f
-                Trend: %s
-                Data Points: %d | Quality: %s
-                """,
-                rsi, rsiSignal,
-                macd, macdSignalLine, macdHistogram, macdSignal,
-                bbUpper, bbMiddle, bbLower,
-                ema20, ema50,
-                trend,
-                dataPoints, quality
+            [%s] RSI: %.1f | MACD Hist: %+.4f
+            ADX: %.1f | +DI: %.1f | -DI: %.1f → %s
+            BB Width: %.2f%% | ATR: %.2f
+            CCI: %.1f | Williams %%R: %.1f
+            Price vs EMA20: %+.2f | vs VWAP: %+.2f
+            """,
+                tf,
+                getDoubleValue(ind, "rsi"),
+                getDoubleValue(ind, "macdHistogram"),
+                adx, plusDi, minusDi,
+                adx > 25 ? (plusDi > minusDi ? "STRONG UP" : "STRONG DOWN") : "WEAK/RANGING",
+                bbWidth, atr,
+                cci, williamsR,
+                getDoubleValue(ind, "price") - getDoubleValue(ind, "ema20"),
+                getDoubleValue(ind, "price") - sessionVwap
         );
     }
 
@@ -226,30 +314,5 @@ public class TradingContextService {
         public Map<String, Object> sentiment;
         public AccountSummary portfolio;
         public String tradingMemory;
-    }
-
-    private String formatTechnicalsEnhanced(Map<String, Object> ind, String tf) {
-        double adx = getDoubleValue(ind, "adx");
-        double plusDi = getDoubleValue(ind, "plusDi");
-        double minusDi = getDoubleValue(ind, "minusDi");
-        double atr = getDoubleValue(ind, "atr");
-        double bbWidth = getDoubleValue(ind, "bbWidthPct"); // (upper-lower)/middle *100
-        double sessionVwap = binanceApiService.getSessionVwap();
-
-        return String.format("""
-            [%s] RSI: %.1f | MACD Hist: %+.4f
-            ADX: %.1f | +DI: %.1f | -DI: %.1f → %s
-            BB Width: %.2f%% | ATR: %.2f
-            Price vs EMA20: %+.2f | vs VWAP: %+.2f
-            """,
-                tf,
-                getDoubleValue(ind, "rsi"),
-                getDoubleValue(ind, "macdHistogram"),
-                adx, plusDi, minusDi,
-                adx > 25 ? (plusDi > minusDi ? "STRONG UP" : "STRONG DOWN") : "WEAK/RANGING",
-                bbWidth, atr,
-                getDoubleValue(ind, "price") - getDoubleValue(ind, "ema20"),
-                getDoubleValue(ind, "price") - sessionVwap
-        );
     }
 }

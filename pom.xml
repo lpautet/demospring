@@ -18,7 +18,7 @@
         <java.version>21</java.version>
         <jjwt.version>0.13.0</jjwt.version>
         <slack.version>1.45.0</slack.version>
-        <spring-ai.version>1.1.0</spring-ai.version>
+        <spring-ai.version>1.0.0-M6</spring-ai.version>
     </properties>
 
     <dependencyManagement>
@@ -127,15 +127,10 @@
             <artifactId>tyrus-standalone-client</artifactId>
             <version>1.19</version>
         </dependency>
-        <!-- Spring AI OpenAI -->
+        <!-- Gemini via OpenAI Compatibility -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai</artifactId>
-            <version>${spring-ai.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-openai</artifactId>
+            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -215,6 +210,13 @@
                 <configuration>
                     <source>21</source>
                     <target>21</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.42</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>

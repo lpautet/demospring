@@ -25,7 +25,7 @@ import java.math.RoundingMode;
 /**
  * Automated Trading Service
  * Executes automated trading based on AI recommendations:
- * - Runs every hour at x:00
+ * - Runs every 15 minutes
  * - Gets quick recommendation from AI
  * - Automatically executes trades on Binance Testnet
  * - Posts all activity to #ethbot Slack channel
@@ -35,7 +35,7 @@ import java.math.RoundingMode;
 @Slf4j
 public class AutomatedTradingService {
 
-    private final QuickRecommendationServiceGrok quickRecommendationService;
+    private final QuickRecommendationServiceGemini quickRecommendationService;
     private final BinanceTradingService tradingService;
     private final RecommendationPersistenceService persistenceService;
     private final BinanceApiService binanceApiService;
@@ -45,7 +45,7 @@ public class AutomatedTradingService {
     private static final String BOT_CHANNEL = "ethbot";
     private static final String DEFAULT_USERNAME = "automated-trader";
 
-    public AutomatedTradingService(QuickRecommendationServiceGrok quickRecommendationService,
+    public AutomatedTradingService(QuickRecommendationServiceGemini quickRecommendationService,
                                    BinanceTradingService tradingService,
                                    RecommendationPersistenceService persistenceService,
                                    SlackConfig slackConfig,
@@ -64,17 +64,17 @@ public class AutomatedTradingService {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initializeOnStartup() {
-        log.debug("🚀 Initializing automated trading system...");
+        log.debug("Initializing automated trading system...");
         
         try {
             String channelId = ensureEthBotChannelExists();
             if (channelId != null) {
-                log.debug("✅ #{} channel ready: {}", BOT_CHANNEL, channelId);
+                log.debug("#{} channel ready: {}", BOT_CHANNEL, channelId);
             } else {
-                log.warn("⚠️ Failed to initialize #{} channel", BOT_CHANNEL);
+                log.warn("Failed to initialize #{} channel", BOT_CHANNEL);
             }
         } catch (Exception e) {
-            log.error("❌ Error during startup initialization", e);
+            log.error("Error during startup initialization", e);
         }
     }
 
@@ -96,12 +96,12 @@ public class AutomatedTradingService {
     }
 
     /**
-     * Automated trading execution - runs every hour at x:00
-     * Schedule: 0 0 * * * * = Every hour at x:00:00
+     * Automated trading execution - runs every 15 minutes
+     * Schedule: 0 0/15 * * * * = Every 15 minutes
      */
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "0 0/15 * * * *")
     public void executeAutomatedTrading() {
-        log.info("🤖 Starting automated trading cycle");
+        log.info("Starting automated trading cycle");
         
         try {
             // 1. Ensure #ethbot channel exists
@@ -113,11 +113,7 @@ public class AutomatedTradingService {
             
             // 2. Post start message
             if (log.isDebugEnabled()) {
-                postToEthBot(channelId, """
-                        ⏰ *Automated Trading Cycle Started*
-                        
-                        Analyzing market conditions and portfolio...
-                        """);
+                postToEthBot(channelId, "Automated Trading Cycle Started\n\nAnalyzing market conditions and portfolio...");
             }
             
             // 3. Get AI recommendation (structured output)
@@ -131,13 +127,8 @@ public class AutomatedTradingService {
             if (shouldExecuteTrade(recommendation)) {
                 executeAndReportTrade(channelId, recommendation);
             } else {
-                postToEthBot(channelId, String.format("""
-                        ⏸️ *Trade Not Executed*
-                        
-                        Signal: %s
-                        Confidence: %s
-                        Reason: %s
-                        """,
+                postToEthBot(channelId, String.format(
+                        "Trade Not Executed\n\nSignal: %s\nConfidence: %s\nReason: %s",
                         recommendation.signal(),
                         recommendation.confidence(),
                         getSkipReason(recommendation)
@@ -146,7 +137,7 @@ public class AutomatedTradingService {
 
             // 6. Post completion
             if (log.isDebugEnabled()) {
-                postToEthBot(channelId, "✅ *Automated Trading Cycle Complete*\n\nNext cycle in 1 hour.");
+                postToEthBot(channelId, "Automated Trading Cycle Complete\n\nNext cycle in 15 minutes.");
             }
 
         } catch (Exception e) {
@@ -154,19 +145,14 @@ public class AutomatedTradingService {
             try {
                 String channelId = findEthBotChannel();
                 if (channelId != null) {
-                    postToEthBot(channelId, String.format("""
-                            ❌ *Error in Automated Trading*
-                            
-                            Error: %s
-                            
-                            Will retry next cycle.
-                            """, e.getMessage()));
+                    postToEthBot(channelId, String.format(
+                            "Error in Automated Trading\n\nError: %s\n\nWill retry next cycle.", e.getMessage()));
                 }
             } catch (Exception ex) {
                 log.error("Failed to post error message", ex);
             }
         }
-        log.info("🤖 Ended automated trading cycle");
+        log.info("Ended automated trading cycle");
     }
 
     private record FeeCheck(BigDecimal pctToTp, BigDecimal roundTrip) {}
@@ -181,8 +167,16 @@ public class AutomatedTradingService {
                 return null;
             }
             var fees = binanceApiService.getTradeFees(BinanceTradingService.SYMBOL_ETHUSDC);
-            BigDecimal taker = fees.takerCommission();
-            BigDecimal roundTrip = taker.add(taker);
+            
+            // Determine entry fee based on order type (Maker for LIMIT, Taker for MARKET)
+            BigDecimal entryFee = (rec.entryType() == TradeRecommendation.EntryType.LIMIT)
+                    ? fees.makerCommission()
+                    : fees.takerCommission();
+            
+            // Exit fee (TP/SL) usually hits as Taker (conservative assumption)
+            BigDecimal exitFee = fees.takerCommission();
+            
+            BigDecimal roundTrip = entryFee.add(exitFee);
 
             BigDecimal entryPrice = rec.entryType() == TradeRecommendation.EntryType.LIMIT && rec.entryPrice() != null
                     ? rec.entryPrice()
@@ -209,7 +203,7 @@ public class AutomatedTradingService {
                  rec.confidence() == TradeRecommendation.Confidence.MEDIUM);
         if (!baseOk) return false;
 
-        // Fees-aware gating: for BUY with TP1 defined, ensure TP1 clears round-trip fees (conservative taker+taker)
+        // Fees-aware gating: for BUY with TP1 defined, ensure TP1 clears round-trip fees
         FeeCheck fees = computeFeeCheck(rec);
         if (fees != null) {
             return fees.pctToTp().compareTo(fees.roundTrip()) > 0;
@@ -246,15 +240,8 @@ public class AutomatedTradingService {
      */
     private void executeAndReportTrade(String channelId, TradeRecommendation rec) {
         try {
-            postToEthBot(channelId, String.format("""
-                    🚀 *Executing Trade*
-                    
-                    Signal: %s
-                    Confidence: %s
-                    Amount: %s %s
-                    
-                    Executing on Binance Testnet...
-                    """,
+            postToEthBot(channelId, String.format(
+                    "Executing Trade\n\nSignal: %s\nConfidence: %s\nAmount: %s %s\n\nExecuting on Binance Testnet...",
                     rec.signal(),
                     rec.confidence(),
                     rec.amount(),
@@ -309,32 +296,25 @@ public class AutomatedTradingService {
                     try {
                         persistenceService.attachOcoDetailsByEntryOrderId(order.orderId(), oco);
                     } catch (Exception ignore) {}
-                    postToEthBot(channelId, String.format("📌 Placed OCO exit: TP $%.2f / SL $%.2f for %.6f ETH",
+                    postToEthBot(channelId, String.format("Placed OCO exit: TP $%.2f / SL $%.2f for %.6f ETH",
                             rec.tp1(), rec.stopLoss(), order.executedQty()));
                 } else if (rec.signal() == TradeRecommendation.Signal.BUY
                         && rec.entryType() == TradeRecommendation.EntryType.LIMIT) {
-                    postToEthBot(channelId, "ℹ️ Limit BUY placed. OCO exit will not be set until the entry fills.");
+                    postToEthBot(channelId, "Limit BUY placed. OCO exit will not be set until the entry fills.");
                 }
             } catch (Exception e) {
                 log.error("Failed to place OCO exit", e);
-                postToEthBot(channelId, "⚠️ Failed to place OCO exit orders (see logs)");
+                postToEthBot(channelId, "Failed to place OCO exit orders (see logs)");
             }
 
             // Report success
             postToEthBot(channelId, formatTradeSuccess(rec, order, portfolio));
             
-            log.debug("✅ Automated trade executed successfully: {} {}", rec.signal(), amount);
+            log.debug("Automated trade executed successfully: {} {}", rec.signal(), amount);
         } catch (Exception e) {
             log.error("Failed to execute automated trade", e);
-            postToEthBot(channelId, String.format("""
-                    ❌ *Trade Execution Failed*
-                    
-                    Signal: %s
-                    Amount: %s %s
-                    Error: %s
-                    
-                    The trade was not executed.
-                    """,
+            postToEthBot(channelId, String.format(
+                    "Trade Execution Failed\n\nSignal: %s\nAmount: %s %s\nError: %s\n\nThe trade was not executed.",
                     rec.signal(),
                     rec.amount(),
                     rec.amountType(),
@@ -347,25 +327,20 @@ public class AutomatedTradingService {
      * Format successful trade message
      */
     private String formatTradeSuccess(TradeRecommendation rec, BinanceOrderResponse order, AccountSummary portfolio) {
-        return String.format("""
-                ✅ *Trade Executed Successfully*
-                
-                *Trade Details:*
-                • Order ID: %s
-                • Type: %s
-                • Executed Qty: %s
-                • Avg Price: $%s
-                • Status: %s
-                
-                *Updated Portfolio:*
-                • USD Balance: $%s
-                • ETH Balance: %s ETH
-                • Total Value: $%s
-                • Total Trades: %s
-                
-                💡 *AI Reasoning:*
-                %s
-                """,
+        return String.format(
+                "Trade Executed Successfully\n\n" +
+                "Trade Details:\n" +
+                "- Order ID: %s\n" +
+                "- Type: %s\n" +
+                "- Executed Qty: %s\n" +
+                "- Avg Price: $%s\n" +
+                "- Status: %s\n\n" +
+                "Updated Portfolio:\n" +
+                "- USD Balance: $%s\n" +
+                "- ETH Balance: %s ETH\n" +
+                "- Total Value: $%s\n" +
+                "- Total Trades: %s\n\n" +
+                "AI Reasoning:\n%s",
                 order.orderId(),
                 rec.signal(),
                 order.executedQty(),
@@ -383,44 +358,21 @@ public class AutomatedTradingService {
      * Post recommendation to channel
      */
     private void postRecommendation(String channelId, TradeRecommendation rec) {
-        String emoji = switch (rec.signal()) {
-            case BUY -> "📈";
-            case SELL -> "📉";
-            case HOLD -> "⏸️";
-        };
-        
-        String confidenceEmoji = switch (rec.confidence()) {
-            case HIGH -> "🔥";
-            case MEDIUM -> "✅";
-            case LOW -> "⚠️";
-        };
-        
         String amountStr = rec.amount() != null 
             ? (rec.amountType() == TradeRecommendation.AmountType.USD 
                 ? String.format("$%.2f", rec.amount()) 
                 : String.format("%.5f ETH", rec.amount()))
             : "NONE";
         
-        postToEthBot(channelId, String.format("""
-                %s *AI Recommendation Received*
-                
-                *Signal:* %s
-                *Confidence:* %s %s
-                *Amount:* %s
-                
-                *Reasoning:*
-                %s
-                
-                ---
-                
-                _Full Recommendation:_
-                ```
-                %s
-                ```
-                """,
-                emoji,
+        postToEthBot(channelId, String.format(
+                "AI Recommendation Received\n\n" +
+                "Signal: %s\n" +
+                "Confidence: %s\n" +
+                "Amount: %s\n\n" +
+                "Reasoning:\n%s\n\n" +
+                "---\n\n" +
+                "Full Recommendation:\n%s",
                 rec.signal(),
-                confidenceEmoji,
                 rec.confidence(),
                 amountStr,
                 rec.reasoning(),
@@ -456,21 +408,17 @@ public class AutomatedTradingService {
                 log.info("Created #ethbot channel: {}", channelId);
                 
                 // Post welcome message
-                postToEthBot(channelId, """
-                        🤖 *Welcome to #ethbot!*
-                        
-                        This channel is for automated ETH trading updates.
-                        
-                        • AI analyzes market every hour
-                        • Automatic trade execution on Binance Testnet
-                        • Real-time updates on all trades
-                        • Portfolio tracking
-                        
-                        🧪 *Mode:* Binance Testnet (fake money, real execution)
-                        ⏰ *Schedule:* Every hour at x:00
-                        
-                        First trading cycle will begin at the next hour.
-                        """);
+                String welcomeMsg = "Welcome to #ethbot!\n\n" +
+                        "This channel is for automated ETH trading updates.\n\n" +
+                        "- AI analyzes market every 15 minutes\n" +
+                        "- Automatic trade execution on Binance Testnet\n" +
+                        "- Real-time updates on all trades\n" +
+                        "- Portfolio tracking\n\n" +
+                        "Mode: Binance Testnet (fake money, real execution)\n" +
+                        "Schedule: Every 15 minutes at x:00, x:15, x:30, x:45\n\n" +
+                        "First trading cycle will begin at the next 15-minute mark.";
+                
+                postToEthBot(channelId, welcomeMsg);
                 
                 return channelId;
             } else {

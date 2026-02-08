@@ -107,15 +107,23 @@ public class BinanceTradingService {
     }
 
     /**
+     * Helper to validate minimum notional value (amount * price >= minNotional)
+     */
+    private void validateMinNotional(BigDecimal amount, BigDecimal price) {
+        BigDecimal value = amount.multiply(price);
+        if (value.compareTo(minNotional) < 0) {
+            throw new IllegalArgumentException(
+                String.format("Order value $%.2f is below minimum notional $%.2f", value, minNotional));
+        }
+    }
+
+    /**
      * Place a LIMIT BUY using a USDC amount and a target limit price.
      * Converts USDC to ETH quantity using limit price and exchange precision.
      */
     public BinanceOrderResponse buyETHLimitUSD(BigDecimal usdcAmount, BigDecimal limitPrice) {
         try {
-            if (usdcAmount.compareTo(minNotional) < 0) {
-                throw new IllegalArgumentException(
-                    String.format("Order amount $%.2f is below minimum $%.2f", usdcAmount, minNotional));
-            }
+            validateMinNotional(usdcAmount, BigDecimal.ONE); // usdcAmount is already the value
 
             // Compute quantity = USDC / price
             BigDecimal qty = usdcAmount.divide(limitPrice, quantityScale + 2, RoundingMode.DOWN)
@@ -143,10 +151,15 @@ public class BinanceTradingService {
     public BinanceOrderResponse sellETHLimit(BigDecimal ethAmount, BigDecimal limitPrice) {
         try {
             BigDecimal qty = ethAmount.setScale(quantityScale, RoundingMode.DOWN);
+            
+            // Validate minimum quantity
             if (qty.compareTo(minQuantity) < 0) {
                 throw new IllegalArgumentException(
                     String.format("Order quantity %s ETH is below minimum %s ETH", qty.toPlainString(), minQuantity.toPlainString()));
             }
+
+            // Validate minimum notional
+            validateMinNotional(qty, limitPrice);
 
             String priceStr = fmtPrice(limitPrice);
             String qtyStr = fmtQty(qty);
@@ -277,11 +290,7 @@ public class BinanceTradingService {
     public BinanceOrderResponse buyETH(BigDecimal usdcAmount) {
         try {
             // Validate minimum notional
-            if (usdcAmount.compareTo(minNotional) < 0) {
-                throw new IllegalArgumentException(
-                    String.format("Order amount $%.2f is below minimum $%.2f", 
-                        usdcAmount, minNotional));
-            }
+            validateMinNotional(usdcAmount, BigDecimal.ONE);
             
             log.info("Placing BUY order for {} USDC on testnet", usdcAmount);
 
@@ -316,6 +325,9 @@ public class BinanceTradingService {
                     String.format("Order quantity %s ETH is below minimum %s ETH", 
                         adjustedAmount.toPlainString(), minQuantity.toPlainString()));
             }
+
+            // Validate minimum notional
+            validateMinNotional(adjustedAmount, getCurrentPrice());
             
             log.info("Placing SELL order for {} ETH on testnet (adjusted to {} decimals)", 
                 adjustedAmount, quantityScale);
@@ -394,6 +406,11 @@ public class BinanceTradingService {
         List<String> actions = new ArrayList<>();
         
         try {
+            // CRUCIAL: Cancel all open orders before resetting to unlock funds
+            log.info("Canceling all open orders for {}...", SYMBOL_ETHUSDC);
+            binanceApiService.cancelAllOrders(SYMBOL_ETHUSDC);
+            actions.add("✅ Cancelled all open ETH orders");
+
             // Get current balances
             var accountInfo = binanceApiService.getAccountInfo();
             BigDecimal ethBalance = accountInfo.getFreeBalance("ETH");
@@ -405,10 +422,11 @@ public class BinanceTradingService {
                 ethBalance.doubleValue(), usdcBalance.doubleValue(), btcBalance.doubleValue()));
             
             // Step 1: Sell all ETH if we have any
-            if (ethBalance.compareTo(new BigDecimal("0.001")) > 0) {
+            if (ethBalance.compareTo(minQuantity) > 0) {
                 log.info("Step 1: Selling {} ETH to USDC", ethBalance);
                 
-                String quantity = ethBalance.setScale(6, RoundingMode.DOWN).toPlainString();
+                // Use dynamic quantityScale instead of hardcoded 6
+                String quantity = ethBalance.setScale(this.quantityScale, RoundingMode.DOWN).toPlainString();
                 var sellOrder = binanceApiService.placeMarketSellOrder(SYMBOL_ETHUSDC, quantity);
                 
                 BigDecimal receivedUsdc = sellOrder.cummulativeQuoteQty();
@@ -452,7 +470,8 @@ public class BinanceTradingService {
                 if (btcBalance.compareTo(new BigDecimal("0.0001")) > 0) {
                     // Calculate how much BTC to sell (estimate based on current price)
                     // We'll use a market sell and it will sell what's needed
-                    String btcToSell = btcBalance.setScale(8, RoundingMode.DOWN).toPlainString();
+                    // Use a conservative hardcoded scale of 5 for BTCUSDC
+                    String btcToSell = btcBalance.setScale(5, RoundingMode.DOWN).toPlainString();
                     var sellOrder = binanceApiService.placeMarketSellOrder(SYMBOL_BTCUSDC, btcToSell);
                     
                     BigDecimal receivedUsdc = sellOrder.cummulativeQuoteQty();
