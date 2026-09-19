@@ -1,5 +1,6 @@
 package net.pautet.softs.demospring;
 
+import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
 import net.pautet.softs.demospring.service.SalesforceService;
@@ -12,6 +13,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.security.PrivateKey;
 
 import static org.mockito.Mockito.*;
 
@@ -21,6 +23,7 @@ class TasksTest {
     private NetatmoService netatmoService;
     private SchedulingService schedulingService;
     private MessageService messageService;
+    private SalesforceConfig salesforceConfig;
     private Tasks tasks;
 
     @BeforeEach
@@ -29,14 +32,15 @@ class TasksTest {
         netatmoService = mock(NetatmoService.class);
         schedulingService = mock(SchedulingService.class);
         messageService = mock(MessageService.class);
-        tasks = new Tasks(salesforceService, netatmoService, schedulingService, messageService);
+        salesforceConfig = mock(SalesforceConfig.class);
+        tasks = new Tasks(salesforceService, netatmoService, schedulingService, messageService, salesforceConfig);
     }
 
     @Test
     void scheduleNetatmoToDataCloud_WhenShouldExecute_AndSalesforceConfigured() throws Exception {
         // Arrange
         when(schedulingService.shouldExecuteNetatmoToDataCloud(anyLong())).thenReturn(true);
-        when(System.getenv("SF_PRIVATE_KEY")).thenReturn("test-key");
+        when(salesforceConfig.privateKey()).thenReturn(mock(PrivateKey.class));
         
         Map<String, Object> metric = new HashMap<>();
         metric.put("temperature", 20.5);
@@ -57,7 +61,7 @@ class TasksTest {
     void scheduleNetatmoToDataCloud_WhenShouldExecute_ButSalesforceNotConfigured() throws IOException {
         // Arrange
         when(schedulingService.shouldExecuteNetatmoToDataCloud(anyLong())).thenReturn(true);
-        when(System.getenv("SF_PRIVATE_KEY")).thenReturn(null);
+        when(salesforceConfig.privateKey()).thenReturn(null);
 
         // Act
         tasks.scheduleNetatmoToDataCloud();
@@ -87,7 +91,7 @@ class TasksTest {
     void scheduleNetatmoToDataCloud_WhenExceptionOccurs() throws Exception {
         // Arrange
         when(schedulingService.shouldExecuteNetatmoToDataCloud(anyLong())).thenReturn(true);
-        when(System.getenv("SF_PRIVATE_KEY")).thenReturn("test-key");
+        when(salesforceConfig.privateKey()).thenReturn(mock(PrivateKey.class));
         when(netatmoService.getNetatmoMetrics()).thenThrow(new IOException("Test exception"));
 
         // Act
@@ -146,4 +150,4 @@ class TasksTest {
         // Assert
         verify(schedulingService, never()).updateMetricsCollectionExecutionTime();
     }
-} 
+}

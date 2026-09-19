@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Start ETH Trading Bot with PostgreSQL
+# Start DemoSpring with PostgreSQL
 # This script starts PostgreSQL and the Spring Boot app
 
 set -e
 
-echo "🚀 Starting ETH Trading Bot with PostgreSQL..."
+echo "🚀 Starting DemoSpring with PostgreSQL..."
 echo ""
 
 # Check if Docker is running

@@ -54,21 +54,24 @@ public class NetatmoService {
     private final StringRedisTemplate redisTemplate; // Injected Redis client
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
     private final MessageService messageService;
+    private final RestClient.Builder restClientBuilder;
 
     private RestClient createApiWebClient() throws IOException {
         if (this.tokenSet.getAccessToken() == null || this.tokenSet.getExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new NetAtmo Access Token");
             refreshToken();
         }
-        return RestClient.builder().baseUrl(NETATMO_API_URI + "/api")
+        return restClientBuilder.clone().baseUrl(NETATMO_API_URI + "/api")
                 .defaultHeader("Authorization", "Bearer " + this.tokenSet.getAccessToken())
                 .build();
     }
 
-    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate, MessageService messageService) {
+    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate,
+                          MessageService messageService, RestClient.Builder restClientBuilder) {
         this.appConfig = appConfig;
         this.netatmoConfig = netatmoConfig;
         this.redisTemplate = redisTemplate;
+        this.restClientBuilder = restClientBuilder;
         this.tokenSet = new TokenSet();
         String loaded = "";
         // Load initial refresh token from Redis if available, otherwise use the property

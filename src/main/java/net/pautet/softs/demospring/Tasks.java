@@ -2,6 +2,7 @@ package net.pautet.softs.demospring;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.pautet.softs.demospring.config.SalesforceConfig;
 import net.pautet.softs.demospring.exception.NetatmoApiException;
 import net.pautet.softs.demospring.service.MessageService;
 import net.pautet.softs.demospring.service.NetatmoService;
@@ -22,6 +23,7 @@ public class Tasks {
     private final NetatmoService netatmoService;
     private final SchedulingService schedulingService;
     private final MessageService messageService;
+    private final SalesforceConfig salesforceConfig;
     private static final long NETATMO_TO_DATACLOUD_INTERVAL = 300000; // 10 minutes in milliseconds
     private static final long MESSAGE_CLEANUP_INTERVAL = 3600000; // 1 hour in milliseconds
     private static final long METRICS_COLLECTION_INTERVAL = 300000; // 5 minutes in milliseconds
@@ -35,7 +37,7 @@ public class Tasks {
         schedulingService.updateNetatmoToDataCloudExecutionTime();
         try {
             // Check if Salesforce configuration is available
-            if (System.getenv("SF_PRIVATE_KEY") == null) {
+            if (salesforceConfig.privateKey() == null) {
                 log.info("Salesforce configuration not available, skipping data push to Data Cloud");
                 messageService.info("Salesforce configuration not available, skipping data push to Data Cloud");
                 return;
@@ -52,13 +54,7 @@ public class Tasks {
             log.error("Netatmo API error in scheduled task: {}. Current hour request count: {}",
                     errorMessage, netatmoService.getCurrentHourRequestCount());
         } catch (Exception e) {
-            String errorMsg = "";
-            Throwable c = e;
-            while (c != null) {
-                errorMsg += c.getMessage() + "->";
-                c = c.getCause();
-            }
-            errorMsg += "End.";
+            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             messageService.error("Error pushing to Data Cloud: " + errorMsg);
             log.error("Error in scheduled task: {}. Current hour request count: {}",
                     errorMsg, netatmoService.getCurrentHourRequestCount());

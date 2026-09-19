@@ -1,13 +1,13 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
@@ -16,6 +16,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class NetatmoServiceTest {
 
@@ -24,7 +27,7 @@ class NetatmoServiceTest {
     private StringRedisTemplate redisTemplate;
     private MessageService messageService;
     private NetatmoService netatmoService;
-    private RestClient restClient;
+    private MockRestServiceServer mockServer;
 
     @BeforeEach
     void setUp() {
@@ -32,16 +35,22 @@ class NetatmoServiceTest {
         appConfig = mock(AppConfig.class);
         redisTemplate = mock(StringRedisTemplate.class);
         messageService = mock(MessageService.class);
-        restClient = mock(RestClient.class);
-        netatmoService = new NetatmoService(appConfig, netatmoConfig, redisTemplate, messageService);
+        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get("netatmo:access_token")).thenReturn("test-access-token");
+        when(valueOperations.get("netatmo:expires_at")).thenReturn(Long.toString(System.currentTimeMillis() + 60_000));
+
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        mockServer = MockRestServiceServer.bindTo(restClientBuilder).build();
+        netatmoService = new NetatmoService(appConfig, netatmoConfig, redisTemplate, messageService, restClientBuilder);
     }
 
     @Test
     void getNetatmoMetrics_WhenSuccessful() throws Exception {
         // Arrange
-        String mockResponse = "{\"body\": {\"devices\": [{\"dashboard_data\": {\"Temperature\": 20.5, \"Humidity\": 60}}]}}";
-        ResponseEntity<String> responseEntity = new ResponseEntity<>(mockResponse, HttpStatus.OK);
-        when(restClient.get().uri(anyString()).retrieve().toEntity(String.class)).thenReturn(responseEntity);
+        String mockResponse = "{\"body\":{\"devices\":[{\"station_name\":\"Home\",\"_id\":\"device-1\",\"dashboard_data\":{\"time_utc\":1700000000,\"Temperature\":20.5,\"Humidity\":60}}]}}";
+        mockServer.expect(requestTo("https://api.netatmo.com/api/getstationsdata"))
+                .andRespond(withSuccess(mockResponse, MediaType.APPLICATION_JSON));
 
         // Act
         List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
@@ -50,15 +59,16 @@ class NetatmoServiceTest {
         assertNotNull(metrics);
         assertEquals(1, metrics.size());
         Map<String, Object> metric = metrics.get(0);
-        assertEquals(20.5, metric.get("temperature"));
-        assertEquals(60, metric.get("humidity"));
+        assertEquals(20.5, metric.get(NetatmoService.TEMPERATURE));
+        assertEquals(60, metric.get(NetatmoService.HUMIDITY));
+        mockServer.verify();
     }
 
     @Test
     void getNetatmoMetrics_WhenApiError() {
         // Arrange
-        ResponseEntity<String> responseEntity = new ResponseEntity<>("Error", HttpStatus.INTERNAL_SERVER_ERROR);
-        when(restClient.get().uri(anyString()).retrieve().toEntity(String.class)).thenReturn(responseEntity);
+        mockServer.expect(requestTo("https://api.netatmo.com/api/getstationsdata"))
+                .andRespond(withServerError());
 
         // Act & Assert
         assertThrows(RuntimeException.class, () -> netatmoService.getNetatmoMetrics());
@@ -68,19 +78,19 @@ class NetatmoServiceTest {
     void getNetatmoMetrics_WhenInvalidResponse() {
         // Arrange
         String invalidResponse = "Invalid JSON";
-        ResponseEntity<String> responseEntity = new ResponseEntity<>(invalidResponse, HttpStatus.OK);
-        when(restClient.get().uri(anyString()).retrieve().toEntity(String.class)).thenReturn(responseEntity);
+        mockServer.expect(requestTo("https://api.netatmo.com/api/getstationsdata"))
+                .andRespond(withSuccess(invalidResponse, MediaType.APPLICATION_JSON));
 
         // Act & Assert
-        assertThrows(RuntimeException.class, () -> netatmoService.getNetatmoMetrics());
+        assertThrows(java.io.IOException.class, () -> netatmoService.getNetatmoMetrics());
     }
 
     @Test
     void getNetatmoMetrics_WhenEmptyResponse() throws Exception {
         // Arrange
         String emptyResponse = "{\"body\": {\"devices\": []}}";
-        ResponseEntity<String> responseEntity = new ResponseEntity<>(emptyResponse, HttpStatus.OK);
-        when(restClient.get().uri(anyString()).retrieve().toEntity(String.class)).thenReturn(responseEntity);
+        mockServer.expect(requestTo("https://api.netatmo.com/api/getstationsdata"))
+                .andRespond(withSuccess(emptyResponse, MediaType.APPLICATION_JSON));
 
         // Act
         List<Map<String, Object>> metrics = netatmoService.getNetatmoMetrics();
@@ -88,5 +98,6 @@ class NetatmoServiceTest {
         // Assert
         assertNotNull(metrics);
         assertTrue(metrics.isEmpty());
+        mockServer.verify();
     }
-} 
+}

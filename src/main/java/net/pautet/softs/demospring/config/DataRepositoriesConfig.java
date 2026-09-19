@@ -1,7 +1,6 @@
 package net.pautet.softs.demospring.config;
 
 import net.pautet.softs.demospring.repository.MessageRepository;
-import net.pautet.softs.demospring.repository.RecommendationHistoryRepository;
 import net.pautet.softs.demospring.repository.RedisUserRepository;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
@@ -13,8 +12,7 @@ import org.springframework.data.redis.repository.configuration.EnableRedisReposi
 @EnableJpaRepositories(
     basePackages = "net.pautet.softs.demospring.repository",
     includeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
-        MessageRepository.class,
-        RecommendationHistoryRepository.class
+        MessageRepository.class
     }),
     excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
         RedisUserRepository.class
@@ -26,8 +24,7 @@ import org.springframework.data.redis.repository.configuration.EnableRedisReposi
         RedisUserRepository.class
     }),
     excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
-        MessageRepository.class,
-        RecommendationHistoryRepository.class
+        MessageRepository.class
     })
 )
 public class DataRepositoriesConfig {

@@ -276,12 +276,4 @@ docker run --env-file .env -p 8080:8080 demospring
 
 ## Documentation
 
-This repository now includes an ETH Trading module (Java 21 + React) in addition to the original Netatmo/Salesforce features.
-
-- Start here: `docs/INDEX.md` (documentation landing page)
-- Trading API: `docs/API_REFERENCE.md`
-- Trading chart behavior: `docs/TRADING_CHART_GUIDE.md` (consolidates prior chart docs)
-
-Notes:
-- The trading module integrates Binance Testnet by default and uses JWT-protected endpoints under `/api/trading/*`.
-- The project targets Java 21 (LTS). 
+Additional guides are available in the `docs` directory. The project targets Java 21 (LTS).

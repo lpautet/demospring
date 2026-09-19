@@ -29,6 +29,7 @@ class SalesforceServiceTest {
     private RestClient.RequestBodyUriSpec requestBodyUriSpec;
     private RestClient.RequestBodySpec requestBodySpec;
     private RestClient.ResponseSpec responseSpec;
+    private MessageService messageService;
     private SalesforceService salesforceService;
 
     @BeforeEach
@@ -39,21 +40,22 @@ class SalesforceServiceTest {
         requestBodyUriSpec = mock(RestClient.RequestBodyUriSpec.class);
         requestBodySpec = mock(RestClient.RequestBodySpec.class);
         responseSpec = mock(RestClient.ResponseSpec.class);
+        messageService = mock(MessageService.class);
 
         connectorSchemaProvider = mock(ConnectorSchemaProvider.class);
         when(connectorSchemaProvider.schemaName()).thenReturn("WeatherStationData");
         when(salesforceConfig.connectorName()).thenReturn("TestConnector");
 
-        salesforceService = new SalesforceService(salesforceConfig, salesforceAuthService, connectorSchemaProvider, null);
+        salesforceService = new SalesforceService(salesforceConfig, salesforceAuthService, connectorSchemaProvider, messageService);
 
         // Default chain wiring
         when(salesforceAuthService.createDataCloudApiClient()).thenReturn(restClient);
         when(restClient.post()).thenReturn(requestBodyUriSpec);
         when(requestBodyUriSpec.uri(anyString())).thenReturn(requestBodySpec);
         when(requestBodyUriSpec.contentType(any(MediaType.class))).thenReturn(requestBodyUriSpec);
-        when(requestBodyUriSpec.body(any())).thenReturn(requestBodySpec);
+        when(requestBodyUriSpec.body(any(Object.class))).thenReturn(requestBodySpec);
         when(requestBodySpec.contentType(any(MediaType.class))).thenReturn(requestBodySpec);
-        when(requestBodySpec.body(any())).thenReturn(requestBodySpec);
+        when(requestBodySpec.body(any(Object.class))).thenReturn(requestBodySpec);
         when(requestBodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.onStatus(any(), any())).thenReturn(responseSpec);
     }
@@ -72,7 +74,7 @@ class SalesforceServiceTest {
         verify(restClient).post();
         verify(requestBodyUriSpec).uri(anyString());
         verify(requestBodySpec).contentType(eq(MediaType.APPLICATION_JSON));
-        verify(requestBodySpec).body(any());
+        verify(requestBodySpec).body(any(Object.class));
         verify(requestBodySpec).retrieve();
         verify(responseSpec).onStatus(any(), any());
         verify(responseSpec).toEntity(eq(DataCloudIngestResponse.class));
@@ -113,4 +115,3 @@ class SalesforceServiceTest {
         return Arrays.asList(metric);
     }
 }
- 

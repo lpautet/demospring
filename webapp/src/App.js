@@ -1,9 +1,6 @@
 import logo from './logo.svg';
 import './App.css';
 import {useEffect, useState, useCallback} from "react";
-import Chat from './Chat';
-import EthTrading from './EthTrading';
-import RecommendationHistory from './RecommendationHistory';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -713,7 +710,6 @@ const getRelativeTime = (d1, d2 = new Date()) => {
 };
 
 function App() {
-    const [currentPage, setCurrentPage] = useState('dashboard'); // 'dashboard', 'chat', 'eth', or 'recommendations'
     const [homeStatus, setHomeStatus] = useState({})
     const [homesData, setHomesData] = useState({})
     const [logMessages, setMessages] = useState([]);
@@ -1193,83 +1189,6 @@ function App() {
 
     return (
             <div className="App">
-                <div style={{
-                    display: 'flex',
-                    gap: '1rem',
-                    padding: '1rem',
-                    justifyContent: 'center',
-                    background: '#f0f0f0',
-                    borderBottom: '2px solid #ddd'
-                }}>
-                    <button
-                        onClick={() => setCurrentPage('dashboard')}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: currentPage === 'dashboard' ? '#667eea' : 'white',
-                            color: currentPage === 'dashboard' ? 'white' : '#333',
-                            border: '1px solid #667eea',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        📊 Dashboard
-                    </button>
-                    <button
-                        onClick={() => setCurrentPage('chat')}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: currentPage === 'chat' ? '#667eea' : 'white',
-                            color: currentPage === 'chat' ? 'white' : '#333',
-                            border: '1px solid #667eea',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        🤖 AI Chat
-                    </button>
-                    <button
-                        onClick={() => setCurrentPage('eth')}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: currentPage === 'eth' ? '#667eea' : 'white',
-                            color: currentPage === 'eth' ? 'white' : '#333',
-                            border: '1px solid #667eea',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        📈 ETH Trading
-                    </button>
-                    <button
-                        onClick={() => setCurrentPage('recommendations')}
-                        style={{
-                            padding: '0.75rem 1.5rem',
-                            background: currentPage === 'recommendations' ? '#f59e0b' : 'white',
-                            color: currentPage === 'recommendations' ? 'white' : '#333',
-                            border: '1px solid #f59e0b',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            transition: 'all 0.2s'
-                        }}
-                    >
-                        🧠 AI Memory
-                    </button>
-                </div>
-                
-                {currentPage === 'chat' ? (
-                    <Chat />
-                ) : currentPage === 'eth' ? (
-                    <EthTrading />
-                ) : currentPage === 'recommendations' ? (
-                    <RecommendationHistory />
-                ) : (
                 <div className={"grid"}>
                     <TemperatureComparisonCard
                         modules={[
@@ -1420,7 +1339,6 @@ function App() {
                 </div>
 
             </div>
-                )}
         </div>
     );
 
