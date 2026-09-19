@@ -33,3 +33,5 @@ jobs:
 
       - name: Build application and run tests
         run: mvn --batch-mode --no-transfer-progress clean package
+        env:
+          CI: "false"
