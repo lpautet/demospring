@@ -1,10 +1,10 @@
 # Spring Boot 4 migration
 
-The application was upgraded from Spring Boot 3.5.7 to 3.5.16, then migrated to Spring Boot 4.1.1 on Java 21.
+The application was upgraded from Spring Boot 3.5.7 to 3.5.16, then migrated to Spring Boot 4.1.1 and Java 25.
 
 ## Current status
 
-The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's focused MVC, REST client, and test starters; application JSON handling uses Jackson 3; and Redis caching uses the Jackson 3 serializer. On Java 21, `mvn clean package` rebuilds the React production bundle, runs all 25 backend tests (including the full application context), and packages the executable JAR successfully. Tests use an isolated in-memory H2 database, mock Redis in the application context, and load Mockito through an explicit Java agent.
+The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's focused MVC, REST client, and test starters; application JSON handling uses Jackson 3; and Redis caching uses the Jackson 3 serializer. On Java 25, `mvn clean package` rebuilds the React production bundle, runs all 27 backend tests (including the full application context), and packages the executable JAR successfully. Tests use an isolated in-memory H2 database, mock Redis in the application context, and load Mockito through an explicit Java agent.
 
 ## Migration sequence
 
@@ -12,7 +12,7 @@ The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's
    - [x] Give tests an isolated H2 test configuration.
    - [x] Configure Mockito's Java agent explicitly instead of relying on runtime self-attachment.
    - [x] Run the complete backend test suite and the React production build locally.
-   - [x] Add the same Java 21 clean-package command to GitHub Actions CI.
+   - [x] Add the same Java 25 clean-package command to GitHub Actions CI.
    - [x] Confirm the first GitHub Actions run succeeds on `main`.
 
 2. Prepare the dependencies for Spring Boot 4.
@@ -37,7 +37,7 @@ The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's
    - Test PostgreSQL schema updates and repository behavior with Hibernate 7.
    - Test Redis repositories and cache serialization with existing production-shaped data.
    - Verify Actuator health, liveness, and readiness endpoints.
-   - Confirm the generated executable JAR starts with Heroku's Java 21 runtime and binds to the assigned port.
+   - Confirm the generated executable JAR starts with Heroku's Java 25 runtime and binds to the assigned port.
 
 6. Then deploy safely.
    - Deploy Spring Boot 4.1.1 to a staging Heroku app with separate PostgreSQL and Redis instances.
@@ -47,7 +47,7 @@ The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's
 
 ## Completion criteria
 
-- The clean Maven package and complete automated test suite pass on Java 21.
+- The clean Maven package and complete automated test suite pass on Java 25.
 - No deprecated Boot 3 compatibility modules remain.
 - Existing Redis and PostgreSQL data are readable or have an explicit migration.
 - The staging smoke-test checklist passes without regressions.

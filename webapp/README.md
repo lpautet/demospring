@@ -9,4 +9,4 @@ The dashboard uses React 19.3, Vite, and the stable React Compiler.
 - `npm run test:watch` runs tests in watch mode.
 - `npm run build` creates the production bundle in `build/` for Maven to package into the Spring Boot application.
 
-The full application can be verified from the repository root with `mvn clean verify` using Java 21.
+The full application can be verified from the repository root with `mvn clean verify` using Java 25.

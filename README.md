@@ -42,7 +42,7 @@ This application provides:
 ```
 
 **Tech Stack:**
-- **Backend**: Spring Boot 4.1.1, Java 21
+- **Backend**: Spring Boot 4.1.1, Java 25
 - **Frontend**: React 19.3, Vite, React Compiler, Chart.js
 - **Database**: H2 (dev), PostgreSQL (prod)
 - **Cache**: Redis
@@ -51,7 +51,7 @@ This application provides:
 
 ## 📋 Prerequisites
 
-- **Java 21** or higher
+- **Java 25**
 - **Node.js 24 recommended** (Maven installs the pinned Node and npm versions automatically)
 - **Redis** server
 - **Netatmo developer account**
@@ -276,4 +276,4 @@ docker run --env-file .env -p 8080:8080 demospring
 
 ## Documentation
 
-Additional guides are available in the `docs` directory. The project targets Java 21 (LTS).
+Additional guides are available in the `docs` directory. The project targets Java 25 (LTS).
