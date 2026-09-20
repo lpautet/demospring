@@ -21,11 +21,11 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v6
       with:
-        node-version: '20'
+        node-version: '24'
 
     - name: Install dependencies
       working-directory: ./webapp
-      run: npm install
+      run: npm ci
 
     - name: Run npm audit
       working-directory: ./webapp

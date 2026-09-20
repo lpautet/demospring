@@ -43,7 +43,7 @@ This application provides:
 
 **Tech Stack:**
 - **Backend**: Spring Boot 4.1.1, Java 21
-- **Frontend**: React 19.0.0, Chart.js
+- **Frontend**: React 19.3, Vite, React Compiler, Chart.js
 - **Database**: H2 (dev), PostgreSQL (prod)
 - **Cache**: Redis
 - **Security**: Spring Security, JWT
@@ -52,7 +52,7 @@ This application provides:
 ## 📋 Prerequisites
 
 - **Java 21** or higher
-- **Node.js 20.18+** and npm
+- **Node.js 24 recommended** (Maven installs the pinned Node and npm versions automatically)
 - **Redis** server
 - **Netatmo developer account**
 - **Salesforce org** with Data Cloud access

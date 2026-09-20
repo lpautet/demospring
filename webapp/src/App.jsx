@@ -1,6 +1,5 @@
-import logo from './logo.svg';
 import './App.css';
-import {useEffect, useState, useCallback} from "react";
+import {useCallback, useEffect, useEffectEvent, useState} from "react";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -15,7 +14,7 @@ import {
     TimeScale,
     Filler
 } from 'chart.js';
-import {Line, Bar} from 'react-chartjs-2';
+import {Line} from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 
 ChartJS.register(
@@ -33,7 +32,7 @@ ChartJS.register(
 );
 
 // Map rf_status to 0-4 bars (adjust thresholds to match your data semantics)
-function toSignalBars(rf_status) {
+export function toSignalBars(rf_status) {
     if (rf_status == null) return 0;
     // Example: higher value = better signal
     if (rf_status >= 80) return 4;
@@ -43,7 +42,7 @@ function toSignalBars(rf_status) {
     return 0;
 }
 
-function toBatteryPercent({battery_percent, battery_vp}) {
+export function toBatteryPercent({battery_percent, battery_vp}) {
     if (battery_percent != null) return battery_percent;
     if (battery_vp == null) return null;
     // Map 3.2V -> 0%, 4.2V -> 100% (approx; tune for Netatmo)
@@ -51,7 +50,7 @@ function toBatteryPercent({battery_percent, battery_vp}) {
     return pct;
 }
 
-function wifiDbmToBars(dBm) {
+export function wifiDbmToBars(dBm) {
     if (dBm == null) return 0;
     // Typical Wi‑Fi RSSI mapping: higher (less negative) is better
     if (dBm >= -55) return 4;
@@ -633,16 +632,6 @@ const TemperatureComparisonCard = ({modules}) => {
     );
 };
 
-// Helper function to generate random colors for the lines
-function getRandomColor() {
-    const letters = '0123456789ABCDEF';
-    let color = '#';
-    for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
-    return color;
-}
-
 const Message = ({message, severity, timestamp, source}) => {
     const getSeverityColor = () => {
         switch (severity) {
@@ -695,6 +684,7 @@ const units = {
 };
 
 const rtf = new Intl.RelativeTimeFormat('en', {style: 'narrow', numeric: 'auto'});
+const MAX_MESSAGES = 10;
 
 const getRelativeTime = (d1, d2 = new Date()) => {
     const elapsed = d1 - d2;
@@ -722,8 +712,6 @@ function App() {
     const [mainStation, setMainStation] = useState({});
     const [therm, setTherm] = useState({});
     const [time, setTime] = useState(new Date());
-    const MAX_MESSAGES = 10;
-
     const addMessage = useCallback((message, severity = 'info', source = 'frontend') => {
         const timestamp = new Date().toISOString();
         setMessages(prev => {
@@ -1046,25 +1034,33 @@ function App() {
         }
     }
 
+    const refreshDashboard = useEffectEvent(async () => {
+        setTime(new Date());
+        if (!homesData?.id) {
+            addMessage("Waiting for homes data...", 'info');
+            return;
+        }
+        await updateStatus(homesData.id);
+    });
+
+    const refreshMessages = useEffectEvent(() => {
+        void fetchServerMessages();
+    });
+
     useEffect(() => {
             const statusInterval = setInterval(async () => {
-                setTime(new Date());
-                if (!homesData) {
-                    addMessage("Waiting for homes data...", 'info');
-                    return;
-                }
-                await updateStatus(homesData.id)
+                await refreshDashboard();
             }, 60000);
     
             const messageInterval = setInterval(() => {
-                fetchServerMessages();
+                refreshMessages();
             }, 30000); // Fetch server logMessages every 30 seconds
     
             return () => {
                 clearInterval(statusInterval);
                 clearInterval(messageInterval);
             };
-        }, [homesData, fetchServerMessages]);
+        }, []);
 
     async function handleToken(tokenId) {
         const authRequest = {
@@ -1100,29 +1096,31 @@ function App() {
         return responseJson.token;
     }
 
+    const refreshToken = useEffectEvent(async () => {
+        const tokenId = localStorage.getItem("tokenId");
+        if (tokenId) {
+            try {
+                const token = await handleToken(tokenId);
+                if (token) {
+                    console.log("JWT token refreshed successfully");
+                }
+            } catch (error) {
+                console.error("Error refreshing JWT token:", error);
+            }
+        }
+    });
+
     // Add JWT token refresh every 6 hours
     useEffect(() => {
-        const refreshToken = async () => {
-            const tokenId = localStorage.getItem("tokenId");
-            if (tokenId) {
-                try {
-                    const token = await handleToken(tokenId);
-                    if (token) {
-                        console.log("JWT token refreshed successfully");
-                    }
-                } catch (error) {
-                    console.error("Error refreshing JWT token:", error);
-                }
-            }
-        };
-
         // Set up interval for every 6 hours
-        const tokenRefreshInterval = setInterval(refreshToken, 6 * 60 * 60 * 1000);
+        const tokenRefreshInterval = setInterval(() => {
+            void refreshToken();
+        }, 6 * 60 * 60 * 1000);
 
         return () => clearInterval(tokenRefreshInterval);
     }, []);
 
-    useEffect(async () => {
+    const initializeDashboard = useEffectEvent(async () => {
             let tokenId = localStorage.getItem("tokenId");
             if (tokenId) {
                 console.log("I have a tokenId");
@@ -1184,8 +1182,11 @@ function App() {
                 console.log("Token ID created: " + tokenId);
                 await signup(tokenId);
             }
-        }, []
-    );
+    });
+
+    useEffect(() => {
+        void initializeDashboard();
+    }, []);
 
     return (
             <div className="App">
