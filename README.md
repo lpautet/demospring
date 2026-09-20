@@ -42,7 +42,7 @@ This application provides:
 ```
 
 **Tech Stack:**
-- **Backend**: Spring Boot 3.5.6, Java 21
+- **Backend**: Spring Boot 4.1.1, Java 21
 - **Frontend**: React 19.0.0, Chart.js
 - **Database**: H2 (dev), PostgreSQL (prod)
 - **Cache**: Redis

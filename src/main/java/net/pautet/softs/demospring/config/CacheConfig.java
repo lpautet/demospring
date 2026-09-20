@@ -1,21 +1,21 @@
 package net.pautet.softs.demospring.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.data.redis.LettuceClientConfigurationBuilderCustomizer;
+import org.springframework.boot.data.redis.autoconfigure.LettuceClientConfigurationBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.cache.Cache;
-import org.springframework.lang.NonNull;
+import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -45,7 +45,7 @@ public class CacheConfig {
 
         // Shared serializers
         StringRedisSerializer keySerializer = new StringRedisSerializer();
-        GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        GenericJacksonJsonRedisSerializer valueSerializer = new GenericJacksonJsonRedisSerializer(objectMapper);
 
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .computePrefixWith(cacheName -> "demospring:" + activeProfile + ":" + cacheName + "::")

@@ -1,8 +1,10 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.core.StreamReadFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.core.json.JsonFactoryBuilder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.AppConfig;
 import net.pautet.softs.demospring.config.NetatmoConfig;
@@ -49,8 +51,8 @@ public class NetatmoService {
     private final NetatmoConfig netatmoConfig;
     private final TokenSet tokenSet;
     private final AppConfig appConfig;
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
+    private final ObjectMapper objectMapper = new ObjectMapper(
+            new JsonFactoryBuilder().enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build());
     private final StringRedisTemplate redisTemplate; // Injected Redis client
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
     private final MessageService messageService;
@@ -126,7 +128,7 @@ public class NetatmoService {
                         log.error("URI Mismatch in exchanging Code for Tokens redirect_uri={}", redirectUri);
                         throw new NetatmoBadRequestException("URI Mismatch in exchanging Code for Tokens");
                     }
-                } catch (IOException e) {
+                } catch (JacksonException e) {
                     log.error("Cannot get token from access code status=BAD REQUEST, with unexpected body: {}", response.getBody());
                     throw new IOException("Cannot get token from access code status=BAD REQUEST, with unexpected body: %s".formatted(response.getBody()));
                 }
@@ -199,7 +201,7 @@ public class NetatmoService {
                         try {
                             ObjectMapper mapper = new ObjectMapper();
                             error = mapper.readValue(errorBody, NetatmoErrorResponse.class);
-                        } catch (IOException e) {
+                        } catch (JacksonException e) {
                             throw new IOException("Error parsing Netatmo error response", e);
                         }
                         throw new NetatmoApiException(error, HttpStatus.FORBIDDEN);
@@ -219,9 +221,9 @@ public class NetatmoService {
 
             for (JsonNode device : devices) {
                 Map<String, Object> deviceData = new HashMap<>();
-                deviceData.put(STATION_NAME, device.get(STATION_NAME).asText());
-                deviceData.put(MODULE_NAME, device.get(STATION_NAME).asText());
-                deviceData.put(MODULE_ID, device.get("_id").asText());
+                deviceData.put(STATION_NAME, device.get(STATION_NAME).asString());
+                deviceData.put(MODULE_NAME, device.get(STATION_NAME).asString());
+                deviceData.put(MODULE_ID, device.get("_id").asString());
                 JsonNode dashboardData = device.get("dashboard_data");
                 deviceData.put(TIMESTAMP, Instant.ofEpochMilli(dashboardData.get("time_utc").asLong() * 1000).toString());
                 addMetrics(deviceData, dashboardData);
@@ -230,9 +232,9 @@ public class NetatmoService {
                 if (device.has("modules")) {
                     for (JsonNode module : device.get("modules")) {
                         Map<String, Object> moduleData = new HashMap<>();
-                        moduleData.put(STATION_NAME, device.get(STATION_NAME).asText());
-                        moduleData.put(MODULE_NAME, module.get(MODULE_NAME).asText());
-                        moduleData.put(MODULE_ID, module.get("_id").asText());
+                        moduleData.put(STATION_NAME, device.get(STATION_NAME).asString());
+                        moduleData.put(MODULE_NAME, module.get(MODULE_NAME).asString());
+                        moduleData.put(MODULE_ID, module.get("_id").asString());
                         JsonNode moduleDashboard = module.get("dashboard_data");
                         if (moduleDashboard == null) {
                             log.info("No dashboard data for " + moduleData.get(MODULE_NAME));
@@ -245,6 +247,9 @@ public class NetatmoService {
                 }
             }
             return metrics;
+        } catch (JacksonException je) {
+            log.error("Error parsing Netatmo response: {}", je.getMessage());
+            throw new IOException("Error parsing Netatmo response", je);
         } catch (RestClientException | IOException rce) {
             if (rce.getCause() instanceof NetatmoApiException) {
                 throw (NetatmoApiException) rce.getCause();

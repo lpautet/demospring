@@ -1,9 +1,9 @@
 package net.pautet.softs.demospring.service;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.exc.MismatchedInputException;
+import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.config.SalesforceConfig;
@@ -141,9 +141,9 @@ public class SalesforceAuthService {
         } catch (MismatchedInputException mie) {
             log.error("Salesforce Token response mismatch: ", mie);
             throw mie;
-        } catch (JsonParseException jpe) {
-            log.error("Salesforce Access Token JSON is invalid!", jpe);
-            throw jpe;
+        } catch (StreamReadException sre) {
+            log.error("Salesforce Access Token JSON is invalid!", sre);
+            throw sre;
         }
     }
 
@@ -183,9 +183,9 @@ public class SalesforceAuthService {
             } catch (MismatchedInputException mie) {
                 log.error("DataCloud Token response mismatch: ", mie);
                 throw mie;
-            } catch (JsonParseException jpe) {
-                log.error("DataCloud Access Token JSON is invalid!", jpe);
-                throw jpe;
+            } catch (StreamReadException sre) {
+                log.error("DataCloud Access Token JSON is invalid!", sre);
+                throw sre;
             }
         } else if (contentType != null && contentType.includes(MediaType.TEXT_HTML)) {
             // Salesforce token is likely invalid now
