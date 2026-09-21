@@ -4,7 +4,7 @@ The application was upgraded from Spring Boot 3.5.7 to 3.5.16, then migrated to 
 
 ## Current status
 
-The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's focused MVC, REST client, and test starters; application JSON handling uses Jackson 3; and Redis caching uses the Jackson 3 serializer. On Java 25, `mvn clean package` rebuilds the React production bundle, runs all 27 backend tests (including the full application context), and packages the executable JAR successfully. Tests use an isolated in-memory H2 database, mock Redis in the application context, and load Mockito through an explicit Java agent.
+The local Spring Boot 4.1.1 migration is complete. The application uses Boot 4's focused MVC, REST client, and test starters; application JSON handling uses Jackson 3; and Redis caching uses the Jackson 3 serializer. On Java 25, `mvn clean package` rebuilds the React production bundle, runs all 30 backend tests (including the full application context and Spring Modulith verification), and packages the executable JAR successfully. Tests use an isolated in-memory H2 database, mock Redis in the application context, and load Mockito through an explicit Java agent.
 
 ## Migration sequence
 

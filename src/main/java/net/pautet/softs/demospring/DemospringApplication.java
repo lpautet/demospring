@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableCaching
 @EnableScheduling
-@ConfigurationPropertiesScan("net.pautet.softs.demospring.config")
+@ConfigurationPropertiesScan("net.pautet.softs.demospring")
 public class DemospringApplication {
 
 	public static void main(String[] args) {

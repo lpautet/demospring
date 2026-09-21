@@ -42,7 +42,7 @@ This application provides:
 ```
 
 **Tech Stack:**
-- **Backend**: Spring Boot 4.1.1, Java 25
+- **Backend**: Spring Boot 4.1.1, Spring Modulith 2.1.1, Java 25
 - **Frontend**: React 19.3, Vite, React Compiler, Chart.js
 - **Database**: H2 (dev), PostgreSQL (prod)
 - **Cache**: Redis
@@ -276,4 +276,5 @@ docker run --env-file .env -p 8080:8080 demospring
 
 ## Documentation
 
-Additional guides are available in the `docs` directory. The project targets Java 25 (LTS).
+Additional guides are available in the `docs` directory, including the
+[modular architecture](docs/MODULAR_ARCHITECTURE.md). The project targets Java 25 (LTS).
