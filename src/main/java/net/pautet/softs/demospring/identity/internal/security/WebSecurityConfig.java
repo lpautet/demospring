@@ -49,8 +49,9 @@ public class WebSecurityConfig {
                                 .requestMatchers("/*", "/assets/**", "/static/**", "/api/auth/hello",
                                         "/api/auth/passkey/csrf", "/api/auth/passkey/begin",
                                         "/webauthn/authenticate/options", "/login/webauthn",
-                                        "/api/auth/callbackAtmo", "/api/netatmo/authorize", "/api/netatmo/callback",
+                                        "/api/auth/callbackAtmo", "/api/netatmo/callback",
                                         "/api/datacloud/data", "/api/salesforce/**").permitAll()
+                                .requestMatchers("/api/netatmo/authorize").hasRole("ADMIN")
                                 .requestMatchers("/webauthn/register/**", "/api/auth/passkey/complete-registration")
                                         .hasRole("PASSKEY_REGISTRATION")
                                 .anyRequest().hasRole("USER")

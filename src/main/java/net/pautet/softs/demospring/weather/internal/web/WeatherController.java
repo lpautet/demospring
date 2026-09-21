@@ -2,7 +2,7 @@ package net.pautet.softs.demospring.weather.internal.web;
 
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.foundation.AppConfig;
-import net.pautet.softs.demospring.identity.RedisUserService;
+import net.pautet.softs.demospring.identity.UserService;
 import net.pautet.softs.demospring.identity.User;
 import net.pautet.softs.demospring.operations.MessageService;
 import net.pautet.softs.demospring.weather.NetatmoApiException;
@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.view.RedirectView;
+import jakarta.servlet.http.HttpSession;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -42,6 +43,7 @@ import java.security.Principal;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 
 import static net.pautet.softs.demospring.weather.NetatmoService.NETATMO_API_URI;
 import static net.pautet.softs.demospring.weather.NetatmoService.NETATMO_CALLBACK_ENDPOINT;
@@ -55,25 +57,26 @@ public class WeatherController {
     private static final Duration CONNECT_TIMEOUT_DURATION = Duration.ofSeconds(5);
     private static final Duration READ_TIMEOUT_DURATION = Duration.ofSeconds(23);
     private static final long TOKEN_REFRESH_COOLDOWN_MS = 60_000; // 60 seconds
+    private static final String SYSTEM_OAUTH_STATE = WeatherController.class.getName() + ".systemOAuthState";
 
     // Lock map to synchronize token refresh per user
     private static final ConcurrentHashMap<String, Object> userRefreshLocks = new ConcurrentHashMap<>();
 
     private final NetatmoConfig netatmoConfig;
-    private final RedisUserService redisUserService;
+    private final UserService userService;
     private final NetatmoService netatmoService;
     private final AppConfig appConfig;
     private final MessageService messageService;
     private final ObjectMapper objectMapper;
 
     public WeatherController(NetatmoConfig netatmoConfig,
-                             RedisUserService redisUserService,
+                             UserService userService,
                              NetatmoService netatmoService,
                              AppConfig appConfig,
                              MessageService messageService,
                              ObjectMapper objectMapper) {
         this.netatmoConfig = netatmoConfig;
-        this.redisUserService = redisUserService;
+        this.userService = userService;
         this.netatmoService = netatmoService;
         this.appConfig = appConfig;
         this.messageService = messageService;
@@ -166,10 +169,10 @@ public class WeatherController {
             Object userLock = userRefreshLocks.computeIfAbsent(user.getUsername(), k -> new Object());
 
             synchronized (userLock) {
-                // Re-fetch user from Redis to get the latest state (in case another thread already refreshed)
-                User latestUser = redisUserService.findByUsername(user.getUsername());
+                // Re-fetch from PostgreSQL in case another request already refreshed the credentials.
+                User latestUser = userService.findByUsername(user.getUsername());
                 if (latestUser == null) {
-                    log.error("User not found in Redis during token refresh: {}", user.getUsername());
+                    log.error("User not found in PostgreSQL during token refresh: {}", user.getUsername());
                     throw new IOException("User not found during token refresh");
                 }
 
@@ -180,7 +183,7 @@ public class WeatherController {
                     if (timeSinceRefresh < TOKEN_REFRESH_COOLDOWN_MS) {
                         log.warn("Token was refreshed {} ms ago (< 60s), skipping refresh for user: {}",
                                 timeSinceRefresh, user.getUsername());
-                        // Update the user object with the latest token from Redis
+                        // Update the request-local user object with the latest persisted credentials.
                         user.setAccessToken(latestUser.getAccessToken());
                         user.setRefreshToken(latestUser.getRefreshToken());
                         user.setRefreshedAt(latestUser.getRefreshedAt());
@@ -200,7 +203,6 @@ public class WeatherController {
                             .build().post().uri("/oauth2/token").body(formData)
                             .retrieve()
                             .body(NetatmoTokenResponse.class);
-                    log.debug("Netatmo Token Response: {}", tokenResponse);
                     log.info("Netatmo Token refreshed successfully for user: {}", user.getUsername());
                     messageService.info("Netatmo Token refreshed.");
                     if (tokenResponse == null) {
@@ -211,7 +213,7 @@ public class WeatherController {
                     latestUser.setAccessToken(tokenResponse.accessToken());
                     latestUser.setRefreshToken(tokenResponse.refreshToken());
                     latestUser.setRefreshedAt(now);
-                    redisUserService.save(latestUser);
+                    userService.save(latestUser);
 
                     // Update the passed user object as well
                     user.setAccessToken(tokenResponse.accessToken());
@@ -238,10 +240,10 @@ public class WeatherController {
             log.warn("Cannot create API client for Netatmo: user is null !");
             throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user is null");
         } else if (user.getAccessToken() == null) {
-            log.warn("Cannot create API client for Netamo: user access token is null. User: {}", user);
+            log.warn("Cannot create API client for Netatmo: access token is missing for user {}", user.getUsername());
             throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user access token is null");
         }
-        log.debug("Creating API web client with access token: {}", user.getAccessToken());
+        log.debug("Creating Netatmo API client for user {}", user.getUsername());
         // 1. Configure the ClientHttpRequestFactory for timeouts
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
 
@@ -257,10 +259,10 @@ public class WeatherController {
     }
 
     private User findUser(Principal principal) {
-        return principal == null ? null : redisUserService.findByUsername(principal.getName());
+        return principal == null ? null : userService.findByUsername(principal.getName());
     }
 
-    @Cacheable(value = "homesdata", unless = "#result == null")
+    @Cacheable(value = "homesdata", key = "'global'", unless = "#result == null")
     @GetMapping("/homesdata")
     public String getHomesData(Principal principal) throws NetatmoUnthorizedException {
         log.debug("Calling for homesdata: " + principal.getName());
@@ -304,26 +306,31 @@ public class WeatherController {
 
     // New endpoint to start Netatmo authorization
     @GetMapping("/netatmo/authorize")
-    public RedirectView authorizeNetatmo() {
+    public RedirectView authorizeNetatmo(HttpSession session) {
+        String state = UUID.randomUUID().toString();
+        session.setAttribute(SYSTEM_OAUTH_STATE, state);
         String authUrl = "https://api.netatmo.com/oauth2/authorize" +
                 "?client_id=" + netatmoConfig.clientId() +
                 "&redirect_uri=" + URLEncoder.encode(appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT, StandardCharsets.UTF_8) +
                 "&scope=" + NETATMO_SCOPE +
-                "&state=netatmo_auth_state"; // Simple state for security
+                "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8);
         return new RedirectView(authUrl);
     }
 
     // New endpoint to handle Netatmo callback
     @GetMapping("/netatmo/callback")
-    public String handleNetatmoCallback(@RequestParam("code") String code, @RequestParam("state") String state) throws Exception {
-        if (!"netatmo_auth_state".equals(state)) {
-            return "Error: Invalid state parameter";
+    public RedirectView handleNetatmoCallback(@RequestParam("code") String code,
+                                               @RequestParam("state") String state,
+                                               HttpSession session) throws Exception {
+        String expectedState = (String) session.getAttribute(SYSTEM_OAUTH_STATE);
+        if (expectedState == null || !expectedState.equals(state)) {
+            throw new NetatmoUnthorizedException("Invalid system OAuth state");
         }
+        session.removeAttribute(SYSTEM_OAUTH_STATE);
 
         NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(code, appConfig.redirectUri() + NETATMO_CALLBACK_ENDPOINT);
-        // Save refresh token to Redis
         netatmoService.saveTokens(tokenResponse);
         netatmoService.getNetatmoMetrics();
-        return "Netatmo tokens retrieved successfully: " + tokenResponse.toString() + "<br>Refresh token saved";
+        return new RedirectView("/");
     }
 }

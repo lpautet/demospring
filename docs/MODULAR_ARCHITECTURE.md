@@ -9,7 +9,7 @@ business capabilities during every test run.
 | Module | Responsibility | Direct dependencies |
 | --- | --- | --- |
 | `foundation` | Shared application and cache configuration | None |
-| `identity` | Users, JWT authentication, and API security | `foundation` |
+| `identity` | Users, passkey authentication, OAuth credential persistence, and API security | `foundation` |
 | `operations` | Persistent application messages and Slack delivery | None |
 | `weather` | Netatmo OAuth, API access, token management, and weather measurements | `foundation`, `identity`, `operations` |
 | `datacloud` | Salesforce authentication, queries, and Data Cloud ingestion | `operations`, `weather` |

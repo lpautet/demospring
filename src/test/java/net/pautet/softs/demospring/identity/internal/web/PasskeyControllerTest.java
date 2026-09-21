@@ -1,6 +1,6 @@
 package net.pautet.softs.demospring.identity.internal.web;
 
-import net.pautet.softs.demospring.identity.RedisUserService;
+import net.pautet.softs.demospring.identity.UserService;
 import net.pautet.softs.demospring.identity.User;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 
 class PasskeyControllerTest {
 
-    private final RedisUserService users = mock(RedisUserService.class);
+    private final UserService users = mock(UserService.class);
     private final PublicKeyCredentialUserEntityRepository userEntities = mock(PublicKeyCredentialUserEntityRepository.class);
     private final UserCredentialRepository credentials = mock(UserCredentialRepository.class);
     private final PasskeyController controller = new PasskeyController(users, userEntities, credentials);

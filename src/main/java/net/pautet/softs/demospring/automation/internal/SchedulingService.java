@@ -4,6 +4,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.Duration;
 
 @Service
 public class SchedulingService {
@@ -18,45 +19,22 @@ public class SchedulingService {
         this.redisTemplate = redisTemplate;
     }
 
-    public Instant getLastExecutionTime(String taskKey) {
-        String lastExecution = redisTemplate.opsForValue().get(taskKey);
-        return lastExecution != null ? Instant.parse(lastExecution) : null;
-    }
-
-    public void updateLastExecutionTime(String taskKey) {
-        redisTemplate.opsForValue().set(taskKey, Instant.now().toString());
-    }
-
-    public boolean shouldExecute(String taskKey, long intervalMillis) {
-        Instant lastExecution = getLastExecutionTime(taskKey);
-        if (lastExecution == null) {
-            return true;
-        }
-        return Instant.now().toEpochMilli() - lastExecution.toEpochMilli() >= intervalMillis;
+    public boolean tryAcquire(String taskKey, long intervalMillis) {
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(
+                taskKey, Instant.now().toString(), Duration.ofMillis(intervalMillis));
+        return Boolean.TRUE.equals(acquired);
     }
 
     // Task-specific convenience methods
-    public boolean shouldExecuteNetatmoToDataCloud(long intervalMillis) {
-        return shouldExecute(NETATMO_TO_DATACLOUD_KEY, intervalMillis);
+    public boolean tryAcquireNetatmoToDataCloud(long intervalMillis) {
+        return tryAcquire(NETATMO_TO_DATACLOUD_KEY, intervalMillis);
     }
 
-    public void updateNetatmoToDataCloudExecutionTime() {
-        updateLastExecutionTime(NETATMO_TO_DATACLOUD_KEY);
+    public boolean tryAcquireMessageCleanup(long intervalMillis) {
+        return tryAcquire(MESSAGE_CLEANUP_KEY, intervalMillis);
     }
 
-    public boolean shouldExecuteMessageCleanup(long intervalMillis) {
-        return shouldExecute(MESSAGE_CLEANUP_KEY, intervalMillis);
-    }
-
-    public void updateMessageCleanupExecutionTime() {
-        updateLastExecutionTime(MESSAGE_CLEANUP_KEY);
-    }
-
-    public boolean shouldExecuteMetricsCollection(long intervalMillis) {
-        return shouldExecute(METRICS_COLLECTION_KEY, intervalMillis);
-    }
-
-    public void updateMetricsCollectionExecutionTime() {
-        updateLastExecutionTime(METRICS_COLLECTION_KEY);
+    public boolean tryAcquireMetricsCollection(long intervalMillis) {
+        return tryAcquire(METRICS_COLLECTION_KEY, intervalMillis);
     }
 }

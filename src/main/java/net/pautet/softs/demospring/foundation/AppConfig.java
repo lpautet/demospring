@@ -7,6 +7,8 @@ public record AppConfig (
 
      String redirectUri,
      String webauthnRpId,
-     String webauthnOrigin
+     String webauthnOrigin,
+     String adminEmail,
+     String tokenEncryptionKey
 
 ) {}

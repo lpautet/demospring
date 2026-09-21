@@ -1,6 +1,7 @@
 package net.pautet.softs.demospring.weather;
 
-import net.pautet.softs.demospring.foundation.AppConfig;
+import net.pautet.softs.demospring.identity.NetatmoCredentialService;
+import net.pautet.softs.demospring.identity.NetatmoCredentials;
 import net.pautet.softs.demospring.operations.MessageService;
 import net.pautet.softs.demospring.weather.NetatmoService;
 import net.pautet.softs.demospring.weather.internal.config.NetatmoConfig;
@@ -25,7 +26,6 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class NetatmoServiceTest {
 
     private NetatmoConfig netatmoConfig;
-    private AppConfig appConfig;
     private StringRedisTemplate redisTemplate;
     private MessageService messageService;
     private NetatmoService netatmoService;
@@ -34,17 +34,17 @@ class NetatmoServiceTest {
     @BeforeEach
     void setUp() {
         netatmoConfig = mock(NetatmoConfig.class);
-        appConfig = mock(AppConfig.class);
         redisTemplate = mock(StringRedisTemplate.class);
         messageService = mock(MessageService.class);
         ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get("netatmo:access_token")).thenReturn("test-access-token");
-        when(valueOperations.get("netatmo:expires_at")).thenReturn(Long.toString(System.currentTimeMillis() + 60_000));
+        NetatmoCredentialService credentialService = mock(NetatmoCredentialService.class);
+        when(credentialService.findSystemCredentials()).thenReturn(new NetatmoCredentials(
+                "test-access-token", "test-refresh-token", System.currentTimeMillis() + 60_000, null));
 
         RestClient.Builder restClientBuilder = RestClient.builder();
         mockServer = MockRestServiceServer.bindTo(restClientBuilder).build();
-        netatmoService = new NetatmoService(appConfig, netatmoConfig, redisTemplate, messageService, restClientBuilder);
+        netatmoService = new NetatmoService(netatmoConfig, redisTemplate, messageService, restClientBuilder, credentialService);
     }
 
     @Test

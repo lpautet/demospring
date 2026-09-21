@@ -22,17 +22,15 @@ public class Tasks {
     private final NetatmoService netatmoService;
     private final SchedulingService schedulingService;
     private final MessageService messageService;
-    private static final long NETATMO_TO_DATACLOUD_INTERVAL = 300000; // 10 minutes in milliseconds
+    private static final long NETATMO_TO_DATACLOUD_INTERVAL = 300000; // 5 minutes
     private static final long MESSAGE_CLEANUP_INTERVAL = 3600000; // 1 hour in milliseconds
     private static final long METRICS_COLLECTION_INTERVAL = 300000; // 5 minutes in milliseconds
 
     @Scheduled(fixedRate = 60000) // Check every minute
     public void scheduleNetatmoToDataCloud() {
-        if (!schedulingService.shouldExecuteNetatmoToDataCloud(NETATMO_TO_DATACLOUD_INTERVAL)) {
+        if (!schedulingService.tryAcquireNetatmoToDataCloud(NETATMO_TO_DATACLOUD_INTERVAL)) {
             return;
         }
-        // we update even if it fails, otherwise we risk reaching user limits
-        schedulingService.updateNetatmoToDataCloudExecutionTime();
         try {
             // Check if Salesforce configuration is available
             if (!salesforceService.isConfigured()) {
@@ -60,14 +58,13 @@ public class Tasks {
 
     @Scheduled(fixedRate = 60000) // Check every minute
     public void scheduleMessageCleanup() {
-        if (!schedulingService.shouldExecuteMessageCleanup(MESSAGE_CLEANUP_INTERVAL)) {
+        if (!schedulingService.tryAcquireMessageCleanup(MESSAGE_CLEANUP_INTERVAL)) {
             return;
         }
 
         try {
             log.info("Starting message cleanup at {}", new java.util.Date());
             // TODO: Implement message cleanup logic
-            schedulingService.updateMessageCleanupExecutionTime();
             log.info("Message cleanup completed successfully");
         } catch (Exception e) {
             log.error("Error in message cleanup task: ", e);
@@ -76,14 +73,13 @@ public class Tasks {
 
     @Scheduled(fixedRate = 60000) // Check every minute
     public void scheduleMetricsCollection() {
-        if (!schedulingService.shouldExecuteMetricsCollection(METRICS_COLLECTION_INTERVAL)) {
+        if (!schedulingService.tryAcquireMetricsCollection(METRICS_COLLECTION_INTERVAL)) {
             return;
         }
 
         try {
             log.info("Starting metrics collection at {}", new java.util.Date());
             // TODO: Implement metrics collection logic
-            schedulingService.updateMetricsCollectionExecutionTime();
             log.info("Metrics collection completed successfully");
         } catch (Exception e) {
             log.error("Error in metrics collection task: ", e);

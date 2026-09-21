@@ -21,8 +21,8 @@ This application provides:
 - **Netatmo Integration**: Collects weather station data via OAuth2
 - **Salesforce Data Cloud**: Ingests sensor data for analytics
 - **React Frontend**: Visualizes weather metrics with charts
-- **JWT Authentication**: Secure API access
-- **Caching**: Redis-based caching for improved performance
+- **Passkey Authentication**: Email-first WebAuthn with Redis-backed sessions
+- **Caching**: Shared Redis caches reduce calls to the rate-limited Netatmo API
 - **Monitoring**: Spring Actuator endpoints for health checks
 
 ## 🏗️ Architecture
@@ -36,17 +36,17 @@ This application provides:
                         ┌───────┼───────┐
                         │       │       │
                 ┌───────▼──┐ ┌──▼───┐ ┌─▼──────────┐
-                │  Redis   │ │  H2  │ │  Netatmo   │
-                │  Cache   │ │  DB  │ │    API     │
+                │  Redis   │ │Postgres│ │ Netatmo  │
+                │Cache/HTTP│ │Durable │ │   API    │
                 └──────────┘ └──────┘ └────────────┘
 ```
 
 **Tech Stack:**
 - **Backend**: Spring Boot 4.1.1, Spring Modulith 2.1.1, Java 25
 - **Frontend**: React 19.3, Vite, React Compiler, Chart.js
-- **Database**: H2 (dev), PostgreSQL (prod)
-- **Cache**: Redis
-- **Security**: Spring Security, JWT
+- **Database**: PostgreSQL (H2 for tests)
+- **Cache and sessions**: Redis
+- **Security**: Spring Security, WebAuthn/passkeys
 - **Build**: Maven, NPM
 
 ## 📋 Prerequisites
@@ -64,7 +64,10 @@ This application provides:
 Create a `.env` file in the project root:
 
 ```bash
-# Database
+# Database and Redis
+DATABASE_URL=jdbc:postgresql://localhost:5432/demospring
+DB_USERNAME=demospring
+DB_PASSWORD=demospring123
 REDIS_URL=redis://localhost:6379
 
 # Netatmo API
@@ -73,7 +76,11 @@ NETATMO_CLIENT_SECRET=your_netatmo_client_secret
 
 # Application
 REDIRECT_URI=http://localhost:8080
-JWT_SECRET=your_jwt_secret_key_256_bits_minimum
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_ORIGIN=http://localhost:8080
+ADMIN_EMAIL=admin@example.com
+# Generate once with: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY=your_base64_encoded_256_bit_key
 
 # Salesforce
 SF_LOGIN_URL=https://login.salesforce.com
@@ -184,8 +191,11 @@ npm audit fix
 ### Security Best Practices
 - Email-first WebAuthn/passkey authentication with server-side sessions
 - Durable passkey credentials stored in PostgreSQL
+- User records and encrypted Netatmo OAuth credentials stored in PostgreSQL
+- Authentication sessions and short-lived OAuth/WebAuthn challenges stored in Redis
 - CSRF protection on authentication and registration ceremonies
 - Random, session-bound OAuth2 state for Netatmo authorization
+- Administrator-only authorization of the system Netatmo account used for Data Cloud forwarding
 - Environment variable based configuration
 - Private keys excluded from version control
 
@@ -199,6 +209,7 @@ npm audit fix
 - `POST /webauthn/authenticate/options` - Create passkey authentication options
 - `POST /login/webauthn` - Verify a passkey assertion and start a session
 - `GET /api/auth/authorizeAtmo` - Authenticated Netatmo OAuth redirect
+- `GET /api/netatmo/authorize` - Administrator-only system Netatmo OAuth redirect
 
 ### Weather Data
 - `GET /api/homesdata` - Netatmo homes and devices
@@ -265,8 +276,8 @@ docker run --env-file .env -p 8080:8080 demospring
 ```
 
 ### Environment-Specific Configuration
-- **Development**: H2 database, local Redis
-- **Production**: PostgreSQL, managed Redis instance
+- **Development/production**: PostgreSQL and Redis
+- **Tests**: isolated H2 database with Redis mocked or disabled as appropriate
 - **Configuration profiles**: Use Spring profiles for environment-specific settings
 
 ---
@@ -282,4 +293,5 @@ docker run --env-file .env -p 8080:8080 demospring
 ## Documentation
 
 Additional guides are available in the `docs` directory, including the
-[modular architecture](docs/MODULAR_ARCHITECTURE.md). The project targets Java 25 (LTS).
+[modular architecture](docs/MODULAR_ARCHITECTURE.md) and the
+[data storage model](docs/DATA_STORAGE.md). The project targets Java 25 (LTS).

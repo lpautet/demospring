@@ -3,7 +3,7 @@ package net.pautet.softs.demospring.identity.internal.web;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-import net.pautet.softs.demospring.identity.RedisUserService;
+import net.pautet.softs.demospring.identity.UserService;
 import net.pautet.softs.demospring.identity.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -34,12 +34,12 @@ public class PasskeyController {
     public static final String EXPECTED_EMAIL = PasskeyController.class.getName() + ".expectedEmail";
     private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
-    private final RedisUserService users;
+    private final UserService users;
     private final PublicKeyCredentialUserEntityRepository userEntities;
     private final UserCredentialRepository credentials;
     private final HttpSessionSecurityContextRepository securityContexts = new HttpSessionSecurityContextRepository();
 
-    PasskeyController(RedisUserService users,
+    PasskeyController(UserService users,
                       PublicKeyCredentialUserEntityRepository userEntities,
                       UserCredentialRepository credentials) {
         this.users = users;

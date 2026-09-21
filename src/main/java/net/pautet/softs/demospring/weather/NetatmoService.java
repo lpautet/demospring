@@ -6,7 +6,8 @@ import tools.jackson.core.json.JsonFactoryBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import net.pautet.softs.demospring.foundation.AppConfig;
+import net.pautet.softs.demospring.identity.NetatmoCredentialService;
+import net.pautet.softs.demospring.identity.NetatmoCredentials;
 import net.pautet.softs.demospring.weather.internal.config.NetatmoConfig;
 import net.pautet.softs.demospring.weather.internal.model.NetatmoBadRequestResponse;
 import net.pautet.softs.demospring.weather.NetatmoTokenResponse;
@@ -27,6 +28,7 @@ import org.springframework.cache.annotation.Cacheable;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -51,15 +53,19 @@ public class NetatmoService {
     public static final String RAIN = "Rain";
     private final NetatmoConfig netatmoConfig;
     private final TokenSet tokenSet;
-    private final AppConfig appConfig;
     private final ObjectMapper objectMapper = new ObjectMapper(
             new JsonFactoryBuilder().enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build());
     private final StringRedisTemplate redisTemplate; // Injected Redis client
     private static final String NETATMO_REQUESTS_KEY_PREFIX = "netatmo:requests:";
+    private static final Duration REQUEST_COUNTER_TTL = Duration.ofDays(3);
     private final MessageService messageService;
     private final RestClient.Builder restClientBuilder;
+    private final NetatmoCredentialService credentialService;
 
     private RestClient createApiWebClient() throws IOException {
+        if (this.tokenSet.getRefreshToken() == null) {
+            loadStoredCredentials();
+        }
         if (this.tokenSet.getAccessToken() == null || this.tokenSet.getExpiresAt() <= System.currentTimeMillis()) {
             log.info("Needs a new NetAtmo Access Token");
             refreshToken();
@@ -69,39 +75,36 @@ public class NetatmoService {
                 .build();
     }
 
-    public NetatmoService(AppConfig appConfig, NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate,
-                          MessageService messageService, RestClient.Builder restClientBuilder) {
-        this.appConfig = appConfig;
+    public NetatmoService(NetatmoConfig netatmoConfig, StringRedisTemplate redisTemplate,
+                          MessageService messageService, RestClient.Builder restClientBuilder,
+                          NetatmoCredentialService credentialService) {
         this.netatmoConfig = netatmoConfig;
         this.redisTemplate = redisTemplate;
         this.restClientBuilder = restClientBuilder;
+        this.credentialService = credentialService;
         this.tokenSet = new TokenSet();
-        String loaded = "";
-        // Load initial refresh token from Redis if available, otherwise use the property
-        String redisValue = redisTemplate.opsForValue().get("netatmo:refresh_token");
-        if (redisValue != null) {
-            this.tokenSet.setRefreshToken(redisValue);
-            loaded += " RefreshToken";
-        }
-        redisValue = redisTemplate.opsForValue().get("netatmo:access_token");
-        if (redisValue != null) {
-            this.tokenSet.setAccessToken(redisValue);
-            loaded += " AccessToken";
-        }
-        redisValue = redisTemplate.opsForValue().get("netatmo:expires_at");
-        if (redisValue != null) {
-            this.tokenSet.setExpiresAt(Long.parseLong(redisValue));
-            loaded += " expires: " + new Date(this.tokenSet.getExpiresAt());
-        }
-        if (!loaded.isEmpty()) {
-            log.info("Loaded from redis: {}", loaded);
-        }
+        loadStoredCredentials();
         this.messageService = messageService;
+    }
+
+    private void loadStoredCredentials() {
+        NetatmoCredentials stored = credentialService.findSystemCredentials();
+        if (stored != null) {
+            this.tokenSet.setRefreshToken(stored.refreshToken());
+            this.tokenSet.setAccessToken(stored.accessToken());
+            this.tokenSet.setExpiresAt(stored.expiresAt() == null ? 0 : stored.expiresAt());
+            log.info("Loaded system Netatmo credentials from PostgreSQL; access token expires at {}",
+                    new Date(this.tokenSet.getExpiresAt()));
+        }
     }
 
     private void incrementRequestCount() {
         String hourKey = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd:HH"));
-        redisTemplate.opsForValue().increment(NETATMO_REQUESTS_KEY_PREFIX + hourKey);
+        String key = NETATMO_REQUESTS_KEY_PREFIX + hourKey;
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1) {
+            redisTemplate.expire(key, REQUEST_COUNTER_TTL);
+        }
     }
 
     public String getCurrentHourRequestCount() {
@@ -150,12 +153,11 @@ public class NetatmoService {
         }
     }
 
-    // Save refresh token to Redis
+    // Persist the dedicated system integration credentials for scheduled Data Cloud forwarding.
     public void saveTokens(NetatmoTokenResponse tokenResponse) {
         this.tokenSet.update(tokenResponse);
-        redisTemplate.opsForValue().set("netatmo:refresh_token", tokenSet.getRefreshToken());
-        redisTemplate.opsForValue().set("netatmo:access_token", tokenSet.getAccessToken());
-        redisTemplate.opsForValue().set("netatmo:expires_at", Long.toString(tokenSet.getExpiresAt()));
+        credentialService.saveSystemCredentials(new NetatmoCredentials(
+                tokenSet.getAccessToken(), tokenSet.getRefreshToken(), tokenSet.getExpiresAt(), System.currentTimeMillis()));
     }
 
     private void refreshToken() throws IOException {

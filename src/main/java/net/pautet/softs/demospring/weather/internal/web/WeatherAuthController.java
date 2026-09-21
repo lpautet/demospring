@@ -3,7 +3,7 @@ package net.pautet.softs.demospring.weather.internal.web;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.pautet.softs.demospring.foundation.AppConfig;
-import net.pautet.softs.demospring.identity.RedisUserService;
+import net.pautet.softs.demospring.identity.UserService;
 import net.pautet.softs.demospring.identity.User;
 import net.pautet.softs.demospring.weather.NetatmoService;
 import net.pautet.softs.demospring.weather.NetatmoTokenResponse;
@@ -38,7 +38,7 @@ class WeatherAuthController {
     private static final String OAUTH_USER = WeatherAuthController.class.getName() + ".user";
 
     private final NetatmoConfig netatmoConfig;
-    private final RedisUserService redisUserService;
+    private final UserService userService;
     private final AppConfig appConfig;
     private final NetatmoService netatmoService;
 
@@ -67,11 +67,11 @@ class WeatherAuthController {
         session.removeAttribute(OAUTH_USER);
         NetatmoTokenResponse tokenResponse = netatmoService.exchangeCodeForTokens(
                 code, appConfig.redirectUri() + REDIRECT_ENDPOINT);
-        User user = redisUserService.findByUsername(username);
+        User user = userService.findByUsername(username);
         user.setAccessToken(tokenResponse.accessToken());
         user.setRefreshToken(tokenResponse.refreshToken());
         user.setExpiresAt(System.currentTimeMillis() + tokenResponse.expiresIn() * 1000);
-        redisUserService.save(user);
+        userService.save(user);
         log.info("New access/refresh tokens saved for user {}", user.getUsername());
         return ResponseEntity.status(HttpStatus.TEMPORARY_REDIRECT).location(URI.create("/")).build();
     }

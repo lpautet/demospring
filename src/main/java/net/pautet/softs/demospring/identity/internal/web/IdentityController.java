@@ -1,6 +1,6 @@
 package net.pautet.softs.demospring.identity.internal.web;
 
-import net.pautet.softs.demospring.identity.RedisUserService;
+import net.pautet.softs.demospring.identity.UserService;
 import net.pautet.softs.demospring.identity.User;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,15 +13,20 @@ import java.security.Principal;
 @RequestMapping("/api")
 class IdentityController {
 
-    private final RedisUserService redisUserService;
+    private final UserService userService;
 
-    IdentityController(RedisUserService redisUserService) {
-        this.redisUserService = redisUserService;
+    IdentityController(UserService userService) {
+        this.userService = userService;
     }
 
     @GetMapping("/whoami")
-    ResponseEntity<User> getWhoAmI(Principal principal) {
-        User user = redisUserService.findByUsername(principal.getName());
-        return user == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(user);
+    ResponseEntity<CurrentUser> getWhoAmI(Principal principal) {
+        User user = userService.findByUsername(principal.getName());
+        return user == null
+                ? ResponseEntity.notFound().build()
+                : ResponseEntity.ok(new CurrentUser(user.getUsername()));
+    }
+
+    record CurrentUser(String username) {
     }
 }

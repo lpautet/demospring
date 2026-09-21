@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 
 import static org.mockito.Answers.RETURNS_DEEP_STUBS;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -46,6 +47,18 @@ class StaticAssetSecurityTest {
     void apiEndpointsRemainProtected() throws Exception {
         mockMvc.perform(get("/api/messages"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void systemNetatmoAuthorizationRequiresAnAdministrator() throws Exception {
+        mockMvc.perform(get("/api/netatmo/authorize"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/netatmo/authorize").with(user("person@example.com").roles("USER")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/netatmo/authorize").with(user("admin@example.com").roles("ADMIN")))
+                .andExpect(status().is3xxRedirection());
     }
 
     @Test
