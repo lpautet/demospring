@@ -31,6 +31,90 @@ ChartJS.register(
     Filler
 );
 
+export function decodeBase64Url(value) {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = globalThis.atob(base64);
+    return Uint8Array.from(binary, character => character.charCodeAt(0)).buffer;
+}
+
+export function encodeBase64Url(value) {
+    const binary = String.fromCharCode(...new Uint8Array(value));
+    return globalThis.btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+async function csrfHeaders() {
+    const response = await fetch('/api/auth/passkey/csrf');
+    if (!response.ok) throw new Error('Could not start a secure sign-in');
+    const csrf = await response.json();
+    return {'Content-Type': 'application/json', [csrf.headerName]: csrf.token};
+}
+
+async function postJson(url, headers, body) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+    return response;
+}
+
+async function registerPasskey(headers) {
+    const options = await (await postJson('/webauthn/register/options', headers)).json();
+    options.challenge = decodeBase64Url(options.challenge);
+    options.user.id = decodeBase64Url(options.user.id);
+    options.excludeCredentials = (options.excludeCredentials || []).map(credential => ({
+        ...credential,
+        id: decodeBase64Url(credential.id)
+    }));
+    const created = await navigator.credentials.create({publicKey: options});
+    const response = created.response;
+    const request = {
+        publicKey: {
+            credential: {
+                id: created.id,
+                rawId: encodeBase64Url(created.rawId),
+                response: {
+                    attestationObject: encodeBase64Url(response.attestationObject),
+                    clientDataJSON: encodeBase64Url(response.clientDataJSON),
+                    transports: response.getTransports ? response.getTransports() : []
+                },
+                type: created.type,
+                clientExtensionResults: created.getClientExtensionResults(),
+                authenticatorAttachment: created.authenticatorAttachment
+            },
+            label: 'Primary passkey'
+        }
+    };
+    await postJson('/webauthn/register', headers, request);
+    await postJson('/api/auth/passkey/complete-registration', headers);
+}
+
+async function authenticatePasskey(headers) {
+    const options = await (await postJson('/webauthn/authenticate/options', headers)).json();
+    options.challenge = decodeBase64Url(options.challenge);
+    options.allowCredentials = (options.allowCredentials || []).map(credential => ({
+        ...credential,
+        id: decodeBase64Url(credential.id)
+    }));
+    const credential = await navigator.credentials.get({publicKey: options});
+    const response = credential.response;
+    const body = {
+        id: credential.id,
+        rawId: encodeBase64Url(credential.rawId),
+        response: {
+            authenticatorData: encodeBase64Url(response.authenticatorData),
+            clientDataJSON: encodeBase64Url(response.clientDataJSON),
+            signature: encodeBase64Url(response.signature),
+            userHandle: response.userHandle ? encodeBase64Url(response.userHandle) : null
+        },
+        credType: credential.type,
+        clientExtensionResults: credential.getClientExtensionResults(),
+        authenticatorAttachment: credential.authenticatorAttachment
+    };
+    await postJson('/login/webauthn', headers, body);
+}
+
 // Map rf_status to 0-4 bars (adjust thresholds to match your data semantics)
 export function toSignalBars(rf_status) {
     if (rf_status == null) return 0;
@@ -700,6 +784,10 @@ const getRelativeTime = (d1, d2 = new Date()) => {
 };
 
 function App() {
+    const [authState, setAuthState] = useState('checking');
+    const [email, setEmail] = useState(() =>
+        typeof window === 'undefined' ? '' : localStorage.getItem('userEmail') || '');
+    const [authError, setAuthError] = useState('');
     const [homeStatus, setHomeStatus] = useState({})
     const [homesData, setHomesData] = useState({})
     const [logMessages, setMessages] = useState([]);
@@ -722,12 +810,7 @@ function App() {
 
     const fetchServerMessages = useCallback(async () => {
         try {
-            const response = await fetch("/api/messages", {
-                method: "GET",
-                headers: {
-                    "Authorization": "Bearer " + sessionStorage.getItem("token")
-                }
-            });
+            const response = await fetch("/api/messages");
             if (response.status === 200) {
                 const serverMessages = await response.json();
                 setMessages(prev => {
@@ -754,32 +837,6 @@ function App() {
         }
     }, []);
 
-    async function signup(tokenId) {
-        const user = {
-            username: tokenId,
-            password: "",
-        };
-        let response = await fetch("/api/auth/signup", {
-            method: "POST",
-            headers: {
-                "Content-Type": "Application/JSON",
-            },
-            body: JSON.stringify(user),
-        });
-        if (response.status !== 200) {
-            console.dir(response);
-            addMessage("Invalid status code at signup: " + response.status + " " + response.statusText + " " + response.statusMessage, 'error');
-            return;
-        }
-        console.log("signup OK");
-        let userReturned = await response.json();
-        if (userReturned) {
-            localStorage.setItem("tokenId", tokenId);
-            window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
-        }
-        return userReturned;
-    }
-
     async function getMeasures(module, types) {
         if (!module || !module.id) {
             addMessage("Module not available", 'warning');
@@ -791,21 +848,11 @@ function App() {
         params.append('module_id', module.id);
         params.append('scale', '30min');
         params.append('type', types);
-        let response = await fetch("/api/getmeasure?" + params, {
-            method: "GET",
-            headers: {
-                "Authorization": "Bearer " + sessionStorage.getItem("token")
-            }
-        });
+        let response = await fetch("/api/getmeasure?" + params);
 
         if (response.status === 403) {
             addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
-            const tokenId = localStorage.getItem("tokenId");
-            if (tokenId) {
-                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
-            } else {
-                addMessage(`No tokenId found. Please sign up again.`, 'error');
-            }
+            window.location.replace("/api/auth/authorizeAtmo");
             return;
         }
 
@@ -910,21 +957,11 @@ function App() {
         }
         const startTime = performance.now();
 
-        let response = await fetch("/api/homestatus?home_id=" + homeId, {
-            method: "GET",
-            headers: {
-                "Authorization": "Bearer " + sessionStorage.getItem("token")
-            }
-        });
+        let response = await fetch("/api/homestatus?home_id=" + homeId);
 
         if (response.status === 403) {
             addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
-            const tokenId = localStorage.getItem("tokenId");
-            if (tokenId) {
-                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
-            } else {
-                addMessage(`No tokenId found. Please sign up again.`, 'error');
-            }
+            window.location.replace("/api/auth/authorizeAtmo");
             return;
         }
 
@@ -1062,131 +1099,102 @@ function App() {
             };
         }, []);
 
-    async function handleToken(tokenId) {
-        const authRequest = {
-            username: tokenId,
-        };
-        let response = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: {
-                "Content-Type": "Application/JSON",
-            },
-            body: JSON.stringify(authRequest),
-        });
-        let responseJson;
-        if (response.status === 200) {
-            console.log("logged in");
-            responseJson = await response.json();
-        } else if (response.status === 404) {
-            console.log("Token not found on server!")
-            responseJson = await signup(tokenId);
-        } else {
-            console.log("Unexpected response status for /auth/login");
-            console.dir(response);
-            return null;
-        }
-
-        if (!responseJson || !responseJson.token) {
-            console.log("No token received from server");
-            return null;
-        }
-
-        // Set the token in sessionStorage
-        sessionStorage.setItem("token", responseJson.token);
-        return responseJson.token;
-    }
-
-    const refreshToken = useEffectEvent(async () => {
-        const tokenId = localStorage.getItem("tokenId");
-        if (tokenId) {
-            try {
-                const token = await handleToken(tokenId);
-                if (token) {
-                    console.log("JWT token refreshed successfully");
-                }
-            } catch (error) {
-                console.error("Error refreshing JWT token:", error);
-            }
-        }
-    });
-
-    // Add JWT token refresh every 6 hours
-    useEffect(() => {
-        // Set up interval for every 6 hours
-        const tokenRefreshInterval = setInterval(() => {
-            void refreshToken();
-        }, 6 * 60 * 60 * 1000);
-
-        return () => clearInterval(tokenRefreshInterval);
-    }, []);
-
     const initializeDashboard = useEffectEvent(async () => {
-            let tokenId = localStorage.getItem("tokenId");
-            if (tokenId) {
-                console.log("I have a tokenId");
-                const token = await handleToken(tokenId);
-                if (token) {
-                    try {
-                        const whoamiResponse = await fetch("/api/whoami", {
-                            method: "GET",
-                            headers: {
-                                "Authorization": "Bearer " + token
-                            }
-                        });
-                        const whoamiData = await whoamiResponse.json();
-                        console.dir(whoamiData);
-
-                        const homesDataResponse = await fetch("/api/homesdata", {
-                            method: "GET",
-                            headers: {
-                                "Authorization": "Bearer " + token
-                            }
-                        });
-
-                        if (homesDataResponse.status === 401 || homesDataResponse.status === 403) {
-                            addMessage(`Netatmo authorization expired. Re-authorizing...`, 'warning');
-                            const tokenId = localStorage.getItem("tokenId");
-                            if (tokenId) {
-                                window.location.replace("/api/auth/authorizeAtmo?id=" + tokenId);
-                            } else {
-                                addMessage(`No tokenId found. Please sign up again.`, 'error');
-                            }
-                            return;
-                        }
-
-                        if (homesDataResponse.status !== 200) {
-                            try {
-                                const errorData = await homesDataResponse.json();
-                                addMessage(`Netatmo API Error (${errorData.error?.code || 'unknown'}): ${errorData.error?.message || 'Unknown error'}`, 'error');
-                            } catch (e) {
-                                addMessage(`Netatmo API Error: ${homesDataResponse.status} ${homesDataResponse.statusText}`, 'error');
-                            }
-                            return;
-                        }
-
-                        const homesData = await homesDataResponse.json();
-
-                        console.dir(homesData.body.homes[0]);
-                        setHomesData(homesData.body.homes[0]);
-                        let homeId = homesData.body.homes[0].id;
-                        await updateStatus(homeId);
-                    } catch (error) {
-                        console.error("Error fetching data:", error);
-                        addMessage("Error fetching data: " + error.message, 'error');
-                    }
-                }
+        try {
+            const whoamiResponse = await fetch('/api/whoami');
+            if (whoamiResponse.status === 401 || whoamiResponse.status === 403) {
+                setAuthState('unauthenticated');
+                return;
             }
-            if (!tokenId) {
-                console.log("No token ID yet !")
-                tokenId = window.crypto.randomUUID();
-                console.log("Token ID created: " + tokenId);
-                await signup(tokenId);
+            if (!whoamiResponse.ok) throw new Error(`Who-am-I returned HTTP ${whoamiResponse.status}`);
+            const user = await whoamiResponse.json();
+            setEmail(user.username);
+            localStorage.setItem('userEmail', user.username);
+            setAuthState('authenticated');
+
+            const homesDataResponse = await fetch('/api/homesdata');
+            if (homesDataResponse.status === 401) {
+                setAuthState('unauthenticated');
+                return;
             }
+            if (homesDataResponse.status === 403) {
+                window.location.replace('/api/auth/authorizeAtmo');
+                return;
+            }
+            if (!homesDataResponse.ok) throw new Error(`Netatmo API returned HTTP ${homesDataResponse.status}`);
+            const homes = await homesDataResponse.json();
+            const home = homes.body?.homes?.[0];
+            if (!home) throw new Error('Netatmo returned no home');
+            setHomesData(home);
+            await updateStatus(home.id);
+        } catch (error) {
+            console.error('Error loading dashboard:', error);
+            addMessage(`Error loading dashboard: ${error.message}`, 'error');
+            setAuthState(current => current === 'checking' ? 'unauthenticated' : current);
+        }
     });
+
+    async function handlePasskey(event) {
+        event.preventDefault();
+        setAuthError('');
+        if (!window.PublicKeyCredential || !navigator.credentials) {
+            setAuthError('This browser does not support passkeys.');
+            return;
+        }
+        setAuthState('authenticating');
+        try {
+            const headers = await csrfHeaders();
+            const begin = await (await postJson('/api/auth/passkey/begin', headers, {email})).json();
+            setEmail(begin.email);
+            localStorage.setItem('userEmail', begin.email);
+            if (begin.action === 'REGISTER') {
+                await registerPasskey(headers);
+                window.location.replace('/api/auth/authorizeAtmo');
+                return;
+            }
+            await authenticatePasskey(headers);
+            await initializeDashboard();
+        } catch (error) {
+            console.error('Passkey ceremony failed:', error);
+            setAuthError(error.name === 'NotAllowedError'
+                ? 'The passkey request was cancelled or timed out.'
+                : error.message);
+            setAuthState('unauthenticated');
+        }
+    }
 
     useEffect(() => {
         void initializeDashboard();
     }, []);
+
+    if (authState !== 'authenticated') {
+        return (
+            <div className="App auth-page">
+                <form className="auth-card" onSubmit={handlePasskey}>
+                    <p className="auth-eyebrow">DemoSpring</p>
+                    <h1>Weather, unlocked by you</h1>
+                    <p>Enter your email. We’ll create a passkey for a new account or ask for your existing passkey.</p>
+                    <label htmlFor="email">Email address</label>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="username webauthn"
+                        value={email}
+                        onChange={event => setEmail(event.target.value)}
+                        disabled={authState === 'checking' || authState === 'authenticating'}
+                        required
+                    />
+                    <button type="submit" disabled={authState === 'checking' || authState === 'authenticating'}>
+                        {authState === 'checking' ? 'Checking session…'
+                            : authState === 'authenticating' ? 'Waiting for passkey…' : 'Continue with passkey'}
+                    </button>
+                    {authError && <p className="auth-error" role="alert">{authError}</p>}
+                    <p className="auth-note">Your email identifies the account; it is not independently verified.</p>
+                </form>
+            </div>
+        );
+    }
 
     return (
             <div className="App">

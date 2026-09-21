@@ -1,11 +1,19 @@
 import {createElement} from 'react';
 import {renderToString} from 'react-dom/server';
 import {describe, expect, test} from 'vitest';
-import App, {toBatteryPercent, toSignalBars, wifiDbmToBars} from './App';
+import App, {decodeBase64Url, encodeBase64Url, toBatteryPercent, toSignalBars, wifiDbmToBars} from './App';
 
 describe('dashboard measurement helpers', () => {
-  test('renders the dashboard shell', () => {
-    expect(renderToString(createElement(App))).toContain('class="App"');
+  test('renders the passkey sign-in shell before a session is known', () => {
+    const html = renderToString(createElement(App));
+    expect(html).toContain('class="App auth-page"');
+    expect(html).toContain('Checking session');
+  });
+
+  test('round-trips WebAuthn binary values as base64url', () => {
+    const input = Uint8Array.from([0, 127, 128, 255]).buffer;
+    expect(new Uint8Array(decodeBase64Url(encodeBase64Url(input))))
+      .toEqual(new Uint8Array(input));
   });
 
   test('maps RF strength to signal bars', () => {

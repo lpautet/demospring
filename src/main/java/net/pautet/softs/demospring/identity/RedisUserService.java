@@ -8,7 +8,9 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -47,7 +49,7 @@ public class RedisUserService implements UserDetailsService {
         return new org.springframework.security.core.userdetails.User(
                 user.getUsername(),
                 "",
-                Collections.emptyList()
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))
         );
     }
 }

@@ -25,7 +25,6 @@ import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.jspecify.annotations.NonNull;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -86,7 +85,7 @@ public class WeatherController {
         private final User user;
 
         RefreshTokenInterceptor(Principal principal) {
-            this.user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
+            this.user = findUser(principal);
         }
 
         @Override
@@ -234,7 +233,7 @@ public class WeatherController {
     }
 
     private RestClient createNetatmoApiWebClient(Principal principal) throws NetatmoUnthorizedException {
-        User user = (User) ((UsernamePasswordAuthenticationToken) principal).getPrincipal();
+        User user = findUser(principal);
         if (user == null) {
             log.warn("Cannot create API client for Netatmo: user is null !");
             throw new NetatmoUnthorizedException("Cannot create API client for Netatmo: user is null");
@@ -255,6 +254,10 @@ public class WeatherController {
                 .defaultHeaders(headers -> headers.setBearerAuth(user.getAccessToken()))
                 .requestInterceptor(new RefreshTokenInterceptor(principal))
                 .build();
+    }
+
+    private User findUser(Principal principal) {
+        return principal == null ? null : redisUserService.findByUsername(principal.getName());
     }
 
     @Cacheable(value = "homesdata", unless = "#result == null")

@@ -182,18 +182,23 @@ npm audit fix
 - **Scan Results**: Available in GitHub Actions artifacts
 
 ### Security Best Practices
-- JWT tokens with configurable expiration
-- CORS and CSRF protection
-- Secure OAuth2 flows for external APIs
+- Email-first WebAuthn/passkey authentication with server-side sessions
+- Durable passkey credentials stored in PostgreSQL
+- CSRF protection on authentication and registration ceremonies
+- Random, session-bound OAuth2 state for Netatmo authorization
 - Environment variable based configuration
 - Private keys excluded from version control
 
 ## 🛠️ API Endpoints
 
 ### Authentication
-- `POST /api/auth/login` - User login
-- `POST /api/auth/signup` - User registration
-- `GET /api/auth/authorizeAtmo` - Netatmo OAuth redirect
+- `GET /api/auth/passkey/csrf` - Obtain a CSRF token for a passkey ceremony
+- `POST /api/auth/passkey/begin` - Select registration or authentication for an email
+- `POST /webauthn/register/options` - Create passkey registration options
+- `POST /webauthn/register` - Verify and store a new passkey
+- `POST /webauthn/authenticate/options` - Create passkey authentication options
+- `POST /login/webauthn` - Verify a passkey assertion and start a session
+- `GET /api/auth/authorizeAtmo` - Authenticated Netatmo OAuth redirect
 
 ### Weather Data
 - `GET /api/homesdata` - Netatmo homes and devices

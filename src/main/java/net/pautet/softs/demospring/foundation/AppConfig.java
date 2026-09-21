@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AppConfig (
 
      String redirectUri,
-     String jwtSecret
+     String webauthnRpId,
+     String webauthnOrigin
 
 ) {}
